@@ -69,6 +69,7 @@
 #undef PACKAGE  // autoheader #defines this.  :(
 
 namespace google {
+
 namespace protobuf {
 
 const FieldDescriptor::CppType
@@ -164,6 +165,15 @@ const int FieldDescriptor::kLastReservedNumber;
 
 namespace {
 
+// Note:  I distrust ctype.h due to locales.
+char ToUpper(char ch) {
+  return (ch >= 'a' && ch <= 'z') ? (ch - 'a' + 'A') : ch;
+}
+
+char ToLower(char ch) {
+  return (ch >= 'A' && ch <= 'Z') ? (ch - 'A' + 'a') : ch;
+}
+
 string ToCamelCase(const string& input, bool lower_first) {
   bool capitalize_next = !lower_first;
   string result;
@@ -173,12 +183,7 @@ string ToCamelCase(const string& input, bool lower_first) {
     if (input[i] == '_') {
       capitalize_next = true;
     } else if (capitalize_next) {
-      // Note:  I distrust ctype.h due to locales.
-      if ('a' <= input[i] && input[i] <= 'z') {
-        result.push_back(input[i] - 'a' + 'A');
-      } else {
-        result.push_back(input[i]);
-      }
+      result.push_back(ToUpper(input[i]));
       capitalize_next = false;
     } else {
       result.push_back(input[i]);
@@ -186,12 +191,115 @@ string ToCamelCase(const string& input, bool lower_first) {
   }
 
   // Lower-case the first letter.
-  if (lower_first && !result.empty() && 'A' <= result[0] && result[0] <= 'Z') {
-      result[0] = result[0] - 'A' + 'a';
+  if (lower_first && !result.empty()) {
+    result[0] = ToLower(result[0]);
   }
 
   return result;
 }
+
+string ToJsonName(const string& input) {
+  bool capitalize_next = false;
+  string result;
+  result.reserve(input.size());
+
+  for (int i = 0; i < input.size(); i++) {
+    if (input[i] == '_') {
+      capitalize_next = true;
+    } else if (capitalize_next) {
+      result.push_back(ToUpper(input[i]));
+      capitalize_next = false;
+    } else {
+      result.push_back(input[i]);
+    }
+  }
+
+  return result;
+}
+
+string EnumValueToPascalCase(const string& input) {
+  bool next_upper = true;
+  string result;
+  result.reserve(input.size());
+
+  for (int i = 0; i < input.size(); i++) {
+    if (input[i] == '_') {
+      next_upper = true;
+    } else {
+      if (next_upper) {
+        result.push_back(ToUpper(input[i]));
+      } else {
+        result.push_back(ToLower(input[i]));
+      }
+      next_upper = false;
+    }
+  }
+
+  return result;
+}
+
+// Class to remove an enum prefix from enum values.
+class PrefixRemover {
+ public:
+  PrefixRemover(StringPiece prefix) {
+    // Strip underscores and lower-case the prefix.
+    for (int i = 0; i < prefix.size(); i++) {
+      if (prefix[i] != '_') {
+        prefix_ += ascii_tolower(prefix[i]);
+      }
+    }
+  }
+
+  // Tries to remove the enum prefix from this enum value.
+  // If this is not possible, returns the input verbatim.
+  string MaybeRemove(StringPiece str) {
+    // We can't just lowercase and strip str and look for a prefix.
+    // We need to properly recognize the difference between:
+    //
+    //   enum Foo {
+    //     FOO_BAR_BAZ = 0;
+    //     FOO_BARBAZ = 1;
+    //   }
+    //
+    // This is acceptable (though perhaps not advisable) because even when
+    // we PascalCase, these two will still be distinct (BarBaz vs. Barbaz).
+    size_t i, j;
+
+    // Skip past prefix_ in str if we can.
+    for (i = 0, j = 0; i < str.size() && j < prefix_.size(); i++) {
+      if (str[i] == '_') {
+        continue;
+      }
+
+      if (ascii_tolower(str[i]) != prefix_[j++]) {
+        return str.as_string();
+      }
+    }
+
+    // If we didn't make it through the prefix, we've failed to strip the
+    // prefix.
+    if (j < prefix_.size()) {
+      return str.as_string();
+    }
+
+    // Skip underscores between prefix and further characters.
+    while (i < str.size() && str[i] == '_') {
+      i++;
+    }
+
+    // Enum label can't be the empty string.
+    if (i == str.size()) {
+      return str.as_string();
+    }
+
+    // We successfully stripped the prefix.
+    str.remove_prefix(i);
+    return str.as_string();
+  }
+
+ private:
+  string prefix_;
+};
 
 // A DescriptorPool contains a bunch of hash_maps to implement the
 // various Find*By*() methods.  Since hashtable lookups are O(1), it's
@@ -357,13 +465,20 @@ void DeleteAllowedProto3Extendee() {
 
 void InitAllowedProto3Extendee() {
   allowed_proto3_extendees_ = new set<string>;
-  allowed_proto3_extendees_->insert("google.protobuf.FileOptions");
-  allowed_proto3_extendees_->insert("google.protobuf.MessageOptions");
-  allowed_proto3_extendees_->insert("google.protobuf.FieldOptions");
-  allowed_proto3_extendees_->insert("google.protobuf.EnumOptions");
-  allowed_proto3_extendees_->insert("google.protobuf.EnumValueOptions");
-  allowed_proto3_extendees_->insert("google.protobuf.ServiceOptions");
-  allowed_proto3_extendees_->insert("google.protobuf.MethodOptions");
+  const char* kOptionNames[] = {
+      "FileOptions",      "MessageOptions", "FieldOptions", "EnumOptions",
+      "EnumValueOptions", "ServiceOptions", "MethodOptions"};
+  for (int i = 0; i < GOOGLE_ARRAYSIZE(kOptionNames); ++i) {
+    // descriptor.proto has a different package name in opensource. We allow
+    // both so the opensource protocol compiler can also compile internal
+    // proto3 files with custom options. See: b/27567912
+    allowed_proto3_extendees_->insert(string("google.protobuf.") +
+                                      kOptionNames[i]);
+    // Split the word to trick the opensource processing scripts so they
+    // will keep the origial package name.
+    allowed_proto3_extendees_->insert(string("proto") + "2." + kOptionNames[i]);
+  }
+
   google::protobuf::internal::OnShutdown(&DeleteAllowedProto3Extendee);
 }
 
@@ -1889,6 +2004,9 @@ void FieldDescriptor::CopyJsonNameTo(FieldDescriptorProto* proto) const {
 
 void OneofDescriptor::CopyTo(OneofDescriptorProto* proto) const {
   proto->set_name(name());
+  if (&options() != &OneofOptions::default_instance()) {
+    proto->mutable_options()->CopyFrom(options());
+  }
 }
 
 void EnumDescriptor::CopyTo(EnumDescriptorProto* proto) const {
@@ -2075,6 +2193,7 @@ class SourceLocationCommentPrinter {
   }
 
  private:
+
   bool have_source_loc_;
   SourceLocation source_loc_;
   DebugStringOptions options_;
@@ -2379,6 +2498,17 @@ void FieldDescriptor::DebugString(int depth,
     strings::SubstituteAndAppend(contents, " [default = $0",
                                  DefaultValueAsString(true));
   }
+  if (has_json_name_) {
+    if (!bracketed) {
+      bracketed = true;
+      contents->append("[");
+    } else {
+      contents->append(", ");
+    }
+    contents->append("json_name = \"");
+    contents->append(CEscape(json_name()));
+    contents->append("\"");
+  }
 
   string formatted_options;
   if (FormatBracketedOptions(depth, options(), &formatted_options)) {
@@ -2427,6 +2557,9 @@ void OneofDescriptor::DebugString(int depth, string* contents,
   comment_printer.AddPreComment(contents);
   strings::SubstituteAndAppend(
       contents, "$0 oneof $1 {", prefix, name());
+
+  FormatLineOptions(depth, options(), contents);
+
   if (debug_string_options.elide_oneof_body) {
     contents->append(" ... }\n");
   } else {
@@ -2765,6 +2898,9 @@ class DescriptorBuilder {
  private:
   friend class OptionInterpreter;
 
+  // Non-recursive part of BuildFile functionality.
+  const FileDescriptor* BuildFileImpl(const FileDescriptorProto& proto);
+
   const DescriptorPool* pool_;
   DescriptorPool::Tables* tables_;  // for convenience
   DescriptorPool::ErrorCollector* error_collector_;
@@ -2963,6 +3099,8 @@ class DescriptorBuilder {
   void BuildOneof(const OneofDescriptorProto& proto,
                   Descriptor* parent,
                   OneofDescriptor* result);
+  void CheckEnumValueUniqueness(const EnumDescriptorProto& proto,
+                                const EnumDescriptor* result);
   void BuildEnum(const EnumDescriptorProto& proto,
                  const Descriptor* parent,
                  EnumDescriptor* result);
@@ -2976,7 +3114,8 @@ class DescriptorBuilder {
                    const ServiceDescriptor* parent,
                    MethodDescriptor* result);
 
-  void LogUnusedDependency(const FileDescriptor* result);
+  void LogUnusedDependency(const FileDescriptorProto& proto,
+                           const FileDescriptor* result);
 
   // Must be run only after building.
   //
@@ -3832,7 +3971,11 @@ const FileDescriptor* DescriptorBuilder::BuildFile(
     }
     tables_->pending_files_.pop_back();
   }
+  return BuildFileImpl(proto);
+}
 
+const FileDescriptor* DescriptorBuilder::BuildFileImpl(
+    const FileDescriptorProto& proto) {
   // Checkpoint the tables so that we can roll back if something goes wrong.
   tables_->AddCheckpoint();
 
@@ -4021,7 +4164,7 @@ const FileDescriptor* DescriptorBuilder::BuildFile(
 
 
   if (!unused_dependency_.empty()) {
-    LogUnusedDependency(result);
+    LogUnusedDependency(proto, result);
   }
 
   if (had_errors_) {
@@ -4168,6 +4311,7 @@ void DescriptorBuilder::BuildMessage(const DescriptorProto& proto,
   }
 }
 
+
 void DescriptorBuilder::BuildFieldOrExtension(const FieldDescriptorProto& proto,
                                               const Descriptor* parent,
                                               FieldDescriptor* result,
@@ -4209,7 +4353,7 @@ void DescriptorBuilder::BuildFieldOrExtension(const FieldDescriptorProto& proto,
     result->json_name_ = tables_->AllocateString(proto.json_name());
   } else {
     result->has_json_name_ = false;
-    result->json_name_ = result->camelcase_name_;
+    result->json_name_ = tables_->AllocateString(ToJsonName(proto.name()));
   }
 
   // Some compilers do not allow static_cast directly between two enum types,
@@ -4273,8 +4417,8 @@ void DescriptorBuilder::BuildFieldOrExtension(const FieldDescriptorProto& proto,
           } else if (proto.default_value() == "nan") {
             result->default_value_float_ = numeric_limits<float>::quiet_NaN();
           } else  {
-            result->default_value_float_ =
-              io::NoLocaleStrtod(proto.default_value().c_str(), &end_pos);
+            result->default_value_float_ = io::SafeDoubleToFloat(
+                io::NoLocaleStrtod(proto.default_value().c_str(), &end_pos));
           }
           break;
         case FieldDescriptor::CPPTYPE_DOUBLE:
@@ -4446,6 +4590,7 @@ void DescriptorBuilder::BuildFieldOrExtension(const FieldDescriptorProto& proto,
     AllocateOptions(proto.options(), result);
   }
 
+
   AddSymbol(result->full_name(), parent, result->name(),
             proto, Symbol(result));
 }
@@ -4505,8 +4650,79 @@ void DescriptorBuilder::BuildOneof(const OneofDescriptorProto& proto,
   result->field_count_ = 0;
   result->fields_ = NULL;
 
+  // Copy options.
+  if (!proto.has_options()) {
+    result->options_ = NULL;  // Will set to default_instance later.
+  } else {
+    AllocateOptions(proto.options(), result);
+  }
+
   AddSymbol(result->full_name(), parent, result->name(),
             proto, Symbol(result));
+}
+
+void DescriptorBuilder::CheckEnumValueUniqueness(
+    const EnumDescriptorProto& proto, const EnumDescriptor* result) {
+
+  // Check that enum labels are still unique when we remove the enum prefix from
+  // values that have it.
+  //
+  // This will fail for something like:
+  //
+  //   enum MyEnum {
+  //     MY_ENUM_FOO = 0;
+  //     FOO = 1;
+  //   }
+  //
+  // By enforcing this reasonable constraint, we allow code generators to strip
+  // the prefix and/or PascalCase it without creating conflicts.  This can lead
+  // to much nicer language-specific enums like:
+  //
+  //   enum NameType {
+  //     FirstName = 1,
+  //     LastName = 2,
+  //   }
+  //
+  // Instead of:
+  //
+  //   enum NameType {
+  //     NAME_TYPE_FIRST_NAME = 1,
+  //     NAME_TYPE_LAST_NAME = 2,
+  //   }
+  PrefixRemover remover(result->name());
+  map<string, const google::protobuf::EnumValueDescriptor*> values;
+  for (int i = 0; i < result->value_count(); i++) {
+    const google::protobuf::EnumValueDescriptor* value = result->value(i);
+    string stripped =
+        EnumValueToPascalCase(remover.MaybeRemove(value->name()));
+    std::pair<map<string, const google::protobuf::EnumValueDescriptor*>::iterator, bool>
+        insert_result = values.insert(std::make_pair(stripped, value));
+    bool inserted = insert_result.second;
+
+    // We don't throw the error if the two conflicting symbols are identical, or
+    // if they map to the same number.  In the former case, the normal symbol
+    // duplication error will fire so we don't need to (and its error message
+    // will make more sense). We allow the latter case so users can create
+    // aliases which add or remove the prefix (code generators that do prefix
+    // stripping should de-dup the labels in this case).
+    if (!inserted && insert_result.first->second->name() != value->name() &&
+        insert_result.first->second->number() != value->number()) {
+      string error_message =
+          "When enum name is stripped and label is PascalCased (" + stripped +
+          "), this value label conflicts with " + values[stripped]->name() +
+          ". This will make the proto fail to compile for some languages, such "
+          "as C#.";
+      // There are proto2 enums out there with conflicting names, so to preserve
+      // compatibility we issue only a warning for proto2.
+      if (result->file()->syntax() == FileDescriptor::SYNTAX_PROTO2) {
+        AddWarning(value->full_name(), proto.value(i),
+                   DescriptorPool::ErrorCollector::NAME, error_message);
+      } else {
+        AddError(value->full_name(), proto.value(i),
+                 DescriptorPool::ErrorCollector::NAME, error_message);
+      }
+    }
+  }
 }
 
 void DescriptorBuilder::BuildEnum(const EnumDescriptorProto& proto,
@@ -4536,6 +4752,8 @@ void DescriptorBuilder::BuildEnum(const EnumDescriptorProto& proto,
   }
 
   BUILD_ARRAY(proto, result, value, BuildEnumValue, result);
+
+  CheckEnumValueUniqueness(proto, result);
 
   // Copy options.
   if (!proto.has_options()) {
@@ -4765,6 +4983,10 @@ void DescriptorBuilder::CrossLinkMessage(
     oneof_decl->fields_ =
       tables_->AllocateArray<const FieldDescriptor*>(oneof_decl->field_count_);
     oneof_decl->field_count_ = 0;
+
+    if (oneof_decl->options_ == NULL) {
+      oneof_decl->options_ = &OneofOptions::default_instance();
+    }
   }
 
   // Then fill them in.
@@ -5109,11 +5331,6 @@ void DescriptorBuilder::ValidateProto3(
   for (int i = 0; i < file->enum_type_count(); ++i) {
     ValidateProto3Enum(file->enum_types_ + i, proto.enum_type(i));
   }
-  if (IsLite(file)) {
-    AddError(file->name(), proto,
-             DescriptorPool::ErrorCollector::OTHER,
-             "Lite runtime is not supported in proto3.");
-  }
 }
 
 static string ToLowercaseWithoutUnderscores(const string& name) {
@@ -5168,7 +5385,7 @@ void DescriptorBuilder::ValidateProto3Message(
     if (name_to_field.find(lowercase_name) != name_to_field.end()) {
       AddError(message->full_name(), proto,
                DescriptorPool::ErrorCollector::OTHER,
-               "The JSON camcel-case name of field \"" +
+               "The JSON camel-case name of field \"" +
                message->field(i)->name() + "\" conflicts with field \"" +
                name_to_field[lowercase_name]->name() + "\". This is not " +
                "allowed in proto3.");
@@ -5558,11 +5775,19 @@ bool DescriptorBuilder::OptionInterpreter::InterpretOptions(
     // UnknownFieldSet and wait there until the message is parsed by something
     // that does know about the options.
     string buf;
-    options->AppendToString(&buf);
-    GOOGLE_CHECK(options->ParseFromString(buf))
+    GOOGLE_CHECK(options->AppendPartialToString(&buf))
+        << "Protocol message could not be serialized.";
+    GOOGLE_CHECK(options->ParsePartialFromString(buf))
         << "Protocol message serialized itself in invalid fashion.";
+    if (!options->IsInitialized()) {
+      builder_->AddWarning(
+          options_to_interpret->element_name, *original_options,
+          DescriptorPool::ErrorCollector::OTHER,
+          "Options could not be fully parsed using the proto descriptors "
+          "compiled into this binary. Missing required fields: " +
+          options->InitializationErrorString());
+    }
   }
-
   return !failed;
 }
 
@@ -6216,7 +6441,8 @@ void DescriptorBuilder::OptionInterpreter::SetUInt64(int number, uint64 value,
   }
 }
 
-void DescriptorBuilder::LogUnusedDependency(const FileDescriptor* result) {
+void DescriptorBuilder::LogUnusedDependency(const FileDescriptorProto& proto,
+                                            const FileDescriptor* result) {
 
   if (!unused_dependency_.empty()) {
     std::set<string> annotation_extensions;
@@ -6242,9 +6468,9 @@ void DescriptorBuilder::LogUnusedDependency(const FileDescriptor* result) {
       }
       // Log warnings for unused imported files.
       if (i == (*it)->extension_count()) {
-        GOOGLE_LOG(WARNING) << "Warning: Unused import: \"" << result->name()
-                     << "\" imports \"" << (*it)->name()
-                     << "\" which is not used.";
+        string error_message = "Import " + (*it)->name() + " but not used.";
+        AddWarning((*it)->name(), proto, DescriptorPool::ErrorCollector::OTHER,
+                   error_message);
       }
     }
   }

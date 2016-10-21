@@ -54,7 +54,7 @@
 
 #include <google/protobuf/stubs/common.h>
 #include <google/protobuf/stubs/logging.h>
-#include <google/protobuf/stubs/scoped_ptr.h>
+#include <google/protobuf/stubs/logging.h>
 #include <google/protobuf/testing/googletest.h>
 #include <gtest/gtest.h>
 
@@ -177,6 +177,61 @@ MethodDescriptorProto* AddMethod(ServiceDescriptorProto* service,
 void AddEmptyEnum(FileDescriptorProto* file, const string& name) {
   AddEnumValue(AddEnum(file, name), name + "_DUMMY", 1);
 }
+
+class MockErrorCollector : public DescriptorPool::ErrorCollector {
+ public:
+  MockErrorCollector() {}
+  ~MockErrorCollector() {}
+
+  string text_;
+  string warning_text_;
+
+  // implements ErrorCollector ---------------------------------------
+  void AddError(const string& filename,
+                const string& element_name, const Message* descriptor,
+                ErrorLocation location, const string& message) {
+    const char* location_name = NULL;
+    switch (location) {
+      case NAME         : location_name = "NAME"         ; break;
+      case NUMBER       : location_name = "NUMBER"       ; break;
+      case TYPE         : location_name = "TYPE"         ; break;
+      case EXTENDEE     : location_name = "EXTENDEE"     ; break;
+      case DEFAULT_VALUE: location_name = "DEFAULT_VALUE"; break;
+      case OPTION_NAME  : location_name = "OPTION_NAME"  ; break;
+      case OPTION_VALUE : location_name = "OPTION_VALUE" ; break;
+      case INPUT_TYPE   : location_name = "INPUT_TYPE"   ; break;
+      case OUTPUT_TYPE  : location_name = "OUTPUT_TYPE"  ; break;
+      case OTHER        : location_name = "OTHER"        ; break;
+    }
+
+    strings::SubstituteAndAppend(
+      &text_, "$0: $1: $2: $3\n",
+      filename, element_name, location_name, message);
+  }
+
+  // implements ErrorCollector ---------------------------------------
+  void AddWarning(const string& filename, const string& element_name,
+                  const Message* descriptor, ErrorLocation location,
+                  const string& message) {
+    const char* location_name = NULL;
+    switch (location) {
+      case NAME         : location_name = "NAME"         ; break;
+      case NUMBER       : location_name = "NUMBER"       ; break;
+      case TYPE         : location_name = "TYPE"         ; break;
+      case EXTENDEE     : location_name = "EXTENDEE"     ; break;
+      case DEFAULT_VALUE: location_name = "DEFAULT_VALUE"; break;
+      case OPTION_NAME  : location_name = "OPTION_NAME"  ; break;
+      case OPTION_VALUE : location_name = "OPTION_VALUE" ; break;
+      case INPUT_TYPE   : location_name = "INPUT_TYPE"   ; break;
+      case OUTPUT_TYPE  : location_name = "OUTPUT_TYPE"  ; break;
+      case OTHER        : location_name = "OTHER"        ; break;
+    }
+
+    strings::SubstituteAndAppend(
+      &warning_text_, "$0: $1: $2: $3\n",
+      filename, element_name, location_name, message);
+  }
+};
 
 // ===================================================================
 
@@ -718,9 +773,9 @@ TEST_F(DescriptorTest, FieldFullName) {
 TEST_F(DescriptorTest, FieldJsonName) {
   EXPECT_EQ("fieldName1", message4_->field(0)->json_name());
   EXPECT_EQ("fieldName2", message4_->field(1)->json_name());
-  EXPECT_EQ("fieldName3", message4_->field(2)->json_name());
-  EXPECT_EQ("fieldName4", message4_->field(3)->json_name());
-  EXPECT_EQ("fIELDNAME5", message4_->field(4)->json_name());
+  EXPECT_EQ("FieldName3", message4_->field(2)->json_name());
+  EXPECT_EQ("FieldName4", message4_->field(3)->json_name());
+  EXPECT_EQ("FIELDNAME5", message4_->field(4)->json_name());
   EXPECT_EQ("@type", message4_->field(5)->json_name());
 
   DescriptorProto proto;
@@ -738,10 +793,20 @@ TEST_F(DescriptorTest, FieldJsonName) {
   ASSERT_EQ(6, proto.field_size());
   EXPECT_EQ("fieldName1", proto.field(0).json_name());
   EXPECT_EQ("fieldName2", proto.field(1).json_name());
-  EXPECT_EQ("fieldName3", proto.field(2).json_name());
-  EXPECT_EQ("fieldName4", proto.field(3).json_name());
-  EXPECT_EQ("fIELDNAME5", proto.field(4).json_name());
+  EXPECT_EQ("FieldName3", proto.field(2).json_name());
+  EXPECT_EQ("FieldName4", proto.field(3).json_name());
+  EXPECT_EQ("FIELDNAME5", proto.field(4).json_name());
   EXPECT_EQ("@type", proto.field(5).json_name());
+
+  // Test generated descriptor.
+  const Descriptor* generated = protobuf_unittest::TestJsonName::descriptor();
+  ASSERT_EQ(6, generated->field_count());
+  EXPECT_EQ("fieldName1", generated->field(0)->json_name());
+  EXPECT_EQ("fieldName2", generated->field(1)->json_name());
+  EXPECT_EQ("FieldName3", generated->field(2)->json_name());
+  EXPECT_EQ("FieldName4", generated->field(3)->json_name());
+  EXPECT_EQ("FIELDNAME5", generated->field(4)->json_name());
+  EXPECT_EQ("@type", generated->field(5)->json_name());
 }
 
 TEST_F(DescriptorTest, FieldFile) {
@@ -2649,6 +2714,7 @@ TEST(CustomOptions, OptionLocations) {
       protobuf_unittest::TestMessageWithCustomOptions::descriptor();
   const FileDescriptor* file = message->file();
   const FieldDescriptor* field = message->FindFieldByName("field1");
+  const OneofDescriptor* oneof = message->FindOneofByName("AnOneof");
   const EnumDescriptor* enm = message->FindEnumTypeByName("AnEnum");
   // TODO(benjy): Support EnumValue options, once the compiler does.
   const ServiceDescriptor* service =
@@ -2663,6 +2729,8 @@ TEST(CustomOptions, OptionLocations) {
             field->options().GetExtension(protobuf_unittest::field_opt1));
   EXPECT_EQ(42,  // Check that we get the default for an option we don't set.
             field->options().GetExtension(protobuf_unittest::field_opt2));
+  EXPECT_EQ(-99,
+            oneof->options().GetExtension(protobuf_unittest::oneof_opt1));
   EXPECT_EQ(-789,
             enm->options().GetExtension(protobuf_unittest::enum_opt1));
   EXPECT_EQ(123,
@@ -3120,77 +3188,95 @@ TEST(CustomOptions, UnusedImportWarning) {
       ->file()->CopyTo(&file_proto);
   ASSERT_TRUE(pool.BuildFile(file_proto) != NULL);
 
-
   pool.AddUnusedImportTrackFile("custom_options_import.proto");
   ASSERT_TRUE(TextFormat::ParseFromString(
     "name: \"custom_options_import.proto\" "
     "package: \"protobuf_unittest\" "
     "dependency: \"google/protobuf/unittest_custom_options.proto\" ",
     &file_proto));
-  pool.BuildFile(file_proto);
+
+  MockErrorCollector error_collector;
+  EXPECT_TRUE(pool.BuildFileCollectingErrors(file_proto, &error_collector));
+  EXPECT_EQ("", error_collector.warning_text_);
+}
+
+// Verifies that proto files can correctly be parsed, even if the
+// custom options defined in the file are incompatible with those
+// compiled in the binary. See http://b/19276250.
+TEST(CustomOptions, OptionsWithRequiredEnums) {
+  DescriptorPool pool;
+
+  FileDescriptorProto file_proto;
+  MessageOptions::descriptor()->file()->CopyTo(&file_proto);
+  ASSERT_TRUE(pool.BuildFile(file_proto) != NULL);
+
+  // Create a new file descriptor proto containing a subset of the
+  // messages defined in google/protobuf/unittest_custom_options.proto.
+  file_proto.Clear();
+  file_proto.set_name("unittest_custom_options.proto");
+  file_proto.set_package("protobuf_unittest");
+  file_proto.add_dependency("google/protobuf/descriptor.proto");
+
+  // Add the "required_enum_opt" extension.
+  FieldDescriptorProto* extension = file_proto.add_extension();
+  protobuf_unittest::OldOptionType::descriptor()->file()
+      ->FindExtensionByName("required_enum_opt")->CopyTo(extension);
+
+  // Add a test message that uses the "required_enum_opt" option.
+  DescriptorProto* test_message_type = file_proto.add_message_type();
+  protobuf_unittest::TestMessageWithRequiredEnumOption::descriptor()
+      ->CopyTo(test_message_type);
+
+  // Instruct the extension to use NewOptionType instead of
+  // OldOptionType, and add the descriptor of NewOptionType.
+  extension->set_type_name(".protobuf_unittest.NewOptionType");
+  DescriptorProto* new_option_type = file_proto.add_message_type();
+  protobuf_unittest::NewOptionType::descriptor()
+      ->CopyTo(new_option_type);
+
+  // Replace the value of the "required_enum_opt" option used in the
+  // test message with an enum value that only exists in NewOptionType.
+  ASSERT_TRUE(TextFormat::ParseFromString(
+      "uninterpreted_option { "
+      "  name { "
+      "    name_part: 'required_enum_opt' "
+      "    is_extension: true "
+      "  } "
+      "  aggregate_value: 'value: NEW_VALUE' "
+      "}",
+      test_message_type->mutable_options()));
+
+  // Add the file descriptor to the pool.
+  ASSERT_TRUE(pool.BuildFile(file_proto) != NULL);
+
+  // Find the test message.
+  const Descriptor* test_message = pool.FindMessageTypeByName(
+      "protobuf_unittest.TestMessageWithRequiredEnumOption");
+  ASSERT_TRUE(test_message != NULL);
+
+  const MessageOptions& options = test_message->options();
+  // Extract the "required_enum_opt" option. Since the binary does not
+  // know that the extension was updated, this will still return an
+  // OldOptionType message.
+  ASSERT_TRUE(
+      options.HasExtension(protobuf_unittest::required_enum_opt));
+  const protobuf_unittest::OldOptionType& old_enum_opt =
+      options.GetExtension(protobuf_unittest::required_enum_opt);
+
+  // Confirm that the required enum field is missing.
+  EXPECT_FALSE(old_enum_opt.IsInitialized());
+  EXPECT_FALSE(old_enum_opt.has_value());
+
+  string buf;
+  // Verify that the required enum field does show up when the option
+  // is re-parsed as a NewOptionType message;
+  protobuf_unittest::NewOptionType new_enum_opt;
+  EXPECT_TRUE(old_enum_opt.AppendPartialToString(&buf));
+  EXPECT_TRUE(new_enum_opt.ParseFromString(buf));
+  EXPECT_EQ(protobuf_unittest::NewOptionType::NEW_VALUE, new_enum_opt.value());
 }
 
 // ===================================================================
-
-// The tests below trigger every unique call to AddError() in descriptor.cc,
-// in the order in which they appear in that file.  I'm using TextFormat here
-// to specify the input descriptors because building them using code would
-// be too bulky.
-
-class MockErrorCollector : public DescriptorPool::ErrorCollector {
- public:
-  MockErrorCollector() {}
-  ~MockErrorCollector() {}
-
-  string text_;
-  string warning_text_;
-
-  // implements ErrorCollector ---------------------------------------
-  void AddError(const string& filename,
-                const string& element_name, const Message* descriptor,
-                ErrorLocation location, const string& message) {
-    const char* location_name = NULL;
-    switch (location) {
-      case NAME         : location_name = "NAME"         ; break;
-      case NUMBER       : location_name = "NUMBER"       ; break;
-      case TYPE         : location_name = "TYPE"         ; break;
-      case EXTENDEE     : location_name = "EXTENDEE"     ; break;
-      case DEFAULT_VALUE: location_name = "DEFAULT_VALUE"; break;
-      case OPTION_NAME  : location_name = "OPTION_NAME"  ; break;
-      case OPTION_VALUE : location_name = "OPTION_VALUE" ; break;
-      case INPUT_TYPE   : location_name = "INPUT_TYPE"   ; break;
-      case OUTPUT_TYPE  : location_name = "OUTPUT_TYPE"  ; break;
-      case OTHER        : location_name = "OTHER"        ; break;
-    }
-
-    strings::SubstituteAndAppend(
-      &text_, "$0: $1: $2: $3\n",
-      filename, element_name, location_name, message);
-  }
-
-  // implements ErrorCollector ---------------------------------------
-  void AddWarning(const string& filename, const string& element_name,
-                  const Message* descriptor, ErrorLocation location,
-                  const string& message) {
-    const char* location_name = NULL;
-    switch (location) {
-      case NAME         : location_name = "NAME"         ; break;
-      case NUMBER       : location_name = "NUMBER"       ; break;
-      case TYPE         : location_name = "TYPE"         ; break;
-      case EXTENDEE     : location_name = "EXTENDEE"     ; break;
-      case DEFAULT_VALUE: location_name = "DEFAULT_VALUE"; break;
-      case OPTION_NAME  : location_name = "OPTION_NAME"  ; break;
-      case OPTION_VALUE : location_name = "OPTION_VALUE" ; break;
-      case INPUT_TYPE   : location_name = "INPUT_TYPE"   ; break;
-      case OUTPUT_TYPE  : location_name = "OUTPUT_TYPE"  ; break;
-      case OTHER        : location_name = "OTHER"        ; break;
-    }
-
-    strings::SubstituteAndAppend(
-      &warning_text_, "$0: $1: $2: $3\n",
-      filename, element_name, location_name, message);
-  }
-};
 
 class ValidationErrorTest : public testing::Test {
  protected:
@@ -4953,7 +5039,7 @@ TEST_F(ValidationErrorTest, AggregateValueParseError) {
   BuildFileWithErrors(
       EmbedAggregateValue("aggregate_value: \"1+2\""),
       "foo.proto: foo.proto: OPTION_VALUE: Error while parsing option "
-      "value for \"foo\": Expected identifier.\n");
+      "value for \"foo\": Expected identifier, got: 1\n");
 }
 
 TEST_F(ValidationErrorTest, AggregateValueUnknownFields) {
@@ -5123,7 +5209,6 @@ TEST_F(ValidationErrorTest, AllowEnumAlias) {
 }
 
 TEST_F(ValidationErrorTest, UnusedImportWarning) {
-
   pool_.AddUnusedImportTrackFile("bar.proto");
   BuildFile(
     "name: \"bar.proto\" "
@@ -5155,7 +5240,7 @@ TEST_F(ValidationErrorTest, UnusedImportWarning) {
   // }
   //
   pool_.AddUnusedImportTrackFile("forward.proto");
-  BuildFile(
+  BuildFileWithWarnings(
     "name: \"forward.proto\""
     "dependency: \"base.proto\""
     "dependency: \"bar.proto\""
@@ -5165,7 +5250,8 @@ TEST_F(ValidationErrorTest, UnusedImportWarning) {
     "message_type {"
     "  name: \"Forward\""
     "  field { name:\"base\" number:1 label:LABEL_OPTIONAL type_name:\"Base\" }"
-    "}");
+    "}",
+    "forward.proto: bar.proto: OTHER: Import bar.proto but not used.\n");
 }
 
 namespace {
@@ -5477,6 +5563,69 @@ TEST_F(ValidationErrorTest, MapEntryConflictsWithEnum) {
       "with an existing enum type.\n");
 }
 
+TEST_F(ValidationErrorTest, EnumValuesConflictWhenPrefixesStripped) {
+  BuildFileWithErrors(
+      "syntax: 'proto3'"
+      "name: 'foo.proto' "
+      "enum_type {"
+      "  name: 'FooEnum' "
+      "  value { name: 'FOO_ENUM_BAZ' number: 0 }"
+      "  value { name: 'BAZ' number: 1 }"
+      "}",
+      "foo.proto: BAZ: NAME: When enum name is stripped and label is "
+      "PascalCased (Baz), this value label conflicts with FOO_ENUM_BAZ. This "
+      "will make the proto fail to compile for some languages, such as C#.\n");
+
+  BuildFileWithErrors(
+      "syntax: 'proto3'"
+      "name: 'foo.proto' "
+      "enum_type {"
+      "  name: 'FooEnum' "
+      "  value { name: 'FOOENUM_BAZ' number: 0 }"
+      "  value { name: 'BAZ' number: 1 }"
+      "}",
+      "foo.proto: BAZ: NAME: When enum name is stripped and label is "
+      "PascalCased (Baz), this value label conflicts with FOOENUM_BAZ. This "
+      "will make the proto fail to compile for some languages, such as C#.\n");
+
+  BuildFileWithErrors(
+      "syntax: 'proto3'"
+      "name: 'foo.proto' "
+      "enum_type {"
+      "  name: 'FooEnum' "
+      "  value { name: 'FOO_ENUM_BAR_BAZ' number: 0 }"
+      "  value { name: 'BAR__BAZ' number: 1 }"
+      "}",
+      "foo.proto: BAR__BAZ: NAME: When enum name is stripped and label is "
+      "PascalCased (BarBaz), this value label conflicts with "
+      "FOO_ENUM_BAR_BAZ. This "
+      "will make the proto fail to compile for some languages, such as C#.\n");
+
+  BuildFileWithErrors(
+      "syntax: 'proto3'"
+      "name: 'foo.proto' "
+      "enum_type {"
+      "  name: 'FooEnum' "
+      "  value { name: 'FOO_ENUM__BAR_BAZ' number: 0 }"
+      "  value { name: 'BAR_BAZ' number: 1 }"
+      "}",
+      "foo.proto: BAR_BAZ: NAME: When enum name is stripped and label is "
+      "PascalCased (BarBaz), this value label conflicts with "
+      "FOO_ENUM__BAR_BAZ. This "
+      "will make the proto fail to compile for some languages, such as C#.\n");
+
+  // This isn't an error because the underscore will cause the PascalCase to
+  // differ by case (BarBaz vs. Barbaz).
+  BuildFile(
+      "syntax: 'proto3'"
+      "name: 'foo.proto' "
+      "enum_type {"
+      "  name: 'FooEnum' "
+      "  value { name: 'BAR_BAZ' number: 0 }"
+      "  value { name: 'BARBAZ' number: 1 }"
+      "}");
+}
+
 TEST_F(ValidationErrorTest, MapEntryConflictsWithOneof) {
   FileDescriptorProto file_proto;
   FillValidMapEntry(&file_proto);
@@ -5666,18 +5815,6 @@ TEST_F(ValidationErrorTest, ValidateProto3Enum) {
       "}");
 }
 
-TEST_F(ValidationErrorTest, ValidateProto3LiteRuntime) {
-  // Lite runtime is not supported in proto3.
-  BuildFileWithErrors(
-      "name: 'foo.proto' "
-      "syntax: 'proto3' "
-      "options { "
-      "  optimize_for: LITE_RUNTIME "
-      "} ",
-      "foo.proto: foo.proto: OTHER: Lite runtime is not supported "
-      "in proto3.\n");
-}
-
 TEST_F(ValidationErrorTest, ValidateProto3Group) {
   BuildFileWithErrors(
       "name: 'foo.proto' "
@@ -5772,7 +5909,7 @@ TEST_F(ValidationErrorTest, ValidateProto3JsonName) {
       "  field { name:'name' number:1 label:LABEL_OPTIONAL type:TYPE_INT32 }"
       "  field { name:'Name' number:2 label:LABEL_OPTIONAL type:TYPE_INT32 }"
       "}",
-      "foo.proto: Foo: OTHER: The JSON camcel-case name of field \"Name\" "
+      "foo.proto: Foo: OTHER: The JSON camel-case name of field \"Name\" "
       "conflicts with field \"name\". This is not allowed in proto3.\n");
   // Underscores are ignored.
   BuildFileWithErrors(
@@ -5783,7 +5920,7 @@ TEST_F(ValidationErrorTest, ValidateProto3JsonName) {
       "  field { name:'ab' number:1 label:LABEL_OPTIONAL type:TYPE_INT32 }"
       "  field { name:'_a__b_' number:2 label:LABEL_OPTIONAL type:TYPE_INT32 }"
       "}",
-      "foo.proto: Foo: OTHER: The JSON camcel-case name of field \"_a__b_\" "
+      "foo.proto: Foo: OTHER: The JSON camel-case name of field \"_a__b_\" "
       "conflicts with field \"ab\". This is not allowed in proto3.\n");
 }
 
