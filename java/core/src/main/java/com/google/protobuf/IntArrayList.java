@@ -30,8 +30,9 @@
 
 package com.google.protobuf;
 
-import com.google.protobuf.Internal.IntList;
+import static com.google.protobuf.Internal.checkNotNull;
 
+import com.google.protobuf.Internal.IntList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.RandomAccess;
@@ -41,11 +42,11 @@ import java.util.RandomAccess;
  *
  * @author dweis@google.com (Daniel Weis)
  */
-final class IntArrayList
-    extends AbstractProtobufList<Integer>
-    implements IntList, RandomAccess {
+final class IntArrayList extends AbstractProtobufList<Integer>
+    implements IntList, RandomAccess, PrimitiveNonBoxingCollection {
 
   private static final IntArrayList EMPTY_LIST = new IntArrayList();
+
   static {
     EMPTY_LIST.makeImmutable();
   }
@@ -54,9 +55,7 @@ final class IntArrayList
     return EMPTY_LIST;
   }
 
-  /**
-   * The backing store for the list.
-   */
+  /** The backing store for the list. */
   private int[] array;
 
   /**
@@ -65,20 +64,29 @@ final class IntArrayList
    */
   private int size;
 
-  /**
-   * Constructs a new mutable {@code IntArrayList} with default capacity.
-   */
+  /** Constructs a new mutable {@code IntArrayList} with default capacity. */
   IntArrayList() {
     this(new int[DEFAULT_CAPACITY], 0);
   }
 
   /**
-   * Constructs a new mutable {@code IntArrayList}
-   * containing the same elements as {@code other}.
+   * Constructs a new mutable {@code IntArrayList} containing the same elements as {@code other}.
    */
   private IntArrayList(int[] other, int size) {
     array = other;
     this.size = size;
+  }
+
+  @Override
+  protected void removeRange(int fromIndex, int toIndex) {
+    ensureIsMutable();
+    if (toIndex < fromIndex) {
+      throw new IndexOutOfBoundsException("toIndex < fromIndex");
+    }
+
+    System.arraycopy(array, toIndex, array, fromIndex, size - toIndex);
+    size -= (toIndex - fromIndex);
+    modCount++;
   }
 
   @Override
@@ -156,17 +164,13 @@ final class IntArrayList
     addInt(index, element);
   }
 
-  /**
-   * Like {@link #add(Integer)} but more efficient in that it doesn't box the element.
-   */
+  /** Like {@link #add(Integer)} but more efficient in that it doesn't box the element. */
   @Override
   public void addInt(int element) {
     addInt(size, element);
   }
 
-  /**
-   * Like {@link #add(int, Integer)} but more efficient in that it doesn't box the element.
-   */
+  /** Like {@link #add(int, Integer)} but more efficient in that it doesn't box the element. */
   private void addInt(int index, int element) {
     ensureIsMutable();
     if (index < 0 || index > size) {
@@ -198,9 +202,7 @@ final class IntArrayList
   public boolean addAll(Collection<? extends Integer> collection) {
     ensureIsMutable();
 
-    if (collection == null) {
-      throw new NullPointerException();
-    }
+    checkNotNull(collection);
 
     // We specialize when adding another IntArrayList to avoid boxing elements.
     if (!(collection instanceof IntArrayList)) {
@@ -248,7 +250,9 @@ final class IntArrayList
     ensureIsMutable();
     ensureIndexInRange(index);
     int value = array[index];
-    System.arraycopy(array, index + 1, array, index, size - index);
+    if (index < size - 1) {
+      System.arraycopy(array, index + 1, array, index, size - index);
+    }
     size--;
     modCount++;
     return value;

@@ -37,6 +37,7 @@
 #include <google/protobuf/util/internal/object_writer.h>
 #include <google/protobuf/stubs/strutil.h>
 #include <gtest/gtest.h>
+
 #include <google/protobuf/stubs/status.h>
 
 
@@ -88,8 +89,9 @@ class JsonStreamParserTest : public ::testing::Test {
   JsonStreamParserTest() : mock_(), ow_(&mock_) {}
   virtual ~JsonStreamParserTest() {}
 
-  util::Status RunTest(StringPiece json, int split, bool coerce_utf8 = false,
-                       bool allow_empty_null = false) {
+  util::Status RunTest(StringPiece json, int split,
+                       bool coerce_utf8 = false, bool allow_empty_null = false,
+                       bool loose_float_number_conversion = false) {
     JsonStreamParser parser(&mock_);
 
     // Special case for split == length, test parsing one character at a time.
@@ -116,21 +118,26 @@ class JsonStreamParserTest : public ::testing::Test {
         result = parser.FinishParse();
       }
     }
+    if (result.ok()){
+      EXPECT_EQ(parser.recursion_depth(), 0);
+    }
     return result;
   }
 
   void DoTest(StringPiece json, int split, bool coerce_utf8 = false,
-              bool allow_empty_null = false) {
-    util::Status result =
-        RunTest(json, split, coerce_utf8, allow_empty_null);
+              bool allow_empty_null = false,
+              bool loose_float_number_conversion = false) {
+    util::Status result = RunTest(json, split, coerce_utf8, allow_empty_null,
+                                  loose_float_number_conversion);
     if (!result.ok()) {
       GOOGLE_LOG(WARNING) << result;
     }
     EXPECT_OK(result);
   }
 
-  void DoErrorTest(StringPiece json, int split, StringPiece error_prefix,
-                   bool coerce_utf8 = false, bool allow_empty_null = false) {
+  void DoErrorTest(StringPiece json, int split,
+                   StringPiece error_prefix, bool coerce_utf8 = false,
+                   bool allow_empty_null = false) {
     util::Status result =
         RunTest(json, split, coerce_utf8, allow_empty_null);
     EXPECT_EQ(util::error::INVALID_ARGUMENT, result.error_code());
@@ -142,7 +149,7 @@ class JsonStreamParserTest : public ::testing::Test {
 #ifndef _MSC_VER
   // TODO(xiaofeng): We have to disable InSequence check for MSVC because it
   // causes stack overflow due to its use of a linked list that is desctructed
-  // recursively. 
+  // recursively.
   ::testing::InSequence in_sequence_;
 #endif  // !_MSC_VER
   MockObjectWriter mock_;
@@ -322,8 +329,7 @@ TEST_F(JsonStreamParserTest, ObjectKeyTypes) {
 
 // - array containing primitive values (true, false, null, num, string)
 TEST_F(JsonStreamParserTest, ArrayPrimitiveValues) {
-  StringPiece str =
-      "[true, false, null, 'one', \"two\"]";
+  StringPiece str = "[true, false, null, 'one', \"two\"]";
   for (int i = 0; i <= str.length(); ++i) {
     ow_.StartList("")
         ->RenderBool("", true)
@@ -693,34 +699,35 @@ TEST_F(JsonStreamParserTest, ExtraCharactersAfterObject) {
   }
 }
 
-// numbers too large
-TEST_F(JsonStreamParserTest, PositiveNumberTooBig) {
-  StringPiece str = "[18446744073709551616]";  // 2^64
+TEST_F(JsonStreamParserTest, PositiveNumberTooBigIsDouble) {
+  StringPiece str = "18446744073709551616";  // 2^64
   for (int i = 0; i <= str.length(); ++i) {
-    ow_.StartList("");
-    DoErrorTest(str, i, "Unable to parse number.");
+    ow_.RenderDouble("", 18446744073709552000.0);
+    DoTest(str, i);
   }
 }
 
-TEST_F(JsonStreamParserTest, NegativeNumberTooBig) {
-  StringPiece str = "[-18446744073709551616]";
+TEST_F(JsonStreamParserTest, NegativeNumberTooBigIsDouble) {
+  StringPiece str = "-18446744073709551616";
   for (int i = 0; i <= str.length(); ++i) {
-    ow_.StartList("");
-    DoErrorTest(str, i, "Unable to parse number.");
+    ow_.RenderDouble("", -18446744073709551616.0);
+    DoTest(str, i);
   }
 }
-
-/*
-TODO(sven): Fail parsing when parsing a double that is too large.
 
 TEST_F(JsonStreamParserTest, DoubleTooBig) {
-  StringPiece str = "[184464073709551232321616.45]";
+  StringPiece str = "[1.89769e+308]";
   for (int i = 0; i <= str.length(); ++i) {
     ow_.StartList("");
-    DoErrorTest(str, i, "Unable to parse number");
+    DoErrorTest(str, i, "Number exceeds the range of double.");
+  }
+  str = "[-1.89769e+308]";
+  for (int i = 0; i <= str.length(); ++i) {
+    ow_.StartList("");
+    DoErrorTest(str, i, "Number exceeds the range of double.");
   }
 }
-*/
+
 
 // invalid bare backslash.
 TEST_F(JsonStreamParserTest, UnfinishedEscape) {
@@ -834,6 +841,49 @@ TEST_F(JsonStreamParserTest, UnknownCharactersInObject) {
     ow_.StartObject("");
     DoErrorTest(str, i, "Expected a value.");
   }
+}
+
+TEST_F(JsonStreamParserTest, DeepNestJsonNotExceedLimit) {
+  int count = 99;
+  string str;
+  for (int i = 0; i < count; ++i) {
+    StrAppend(&str, "{'a':");
+  }
+  StrAppend(&str, "{'nest64':'v1', 'nest64': false, 'nest64': ['v2']}");
+  for (int i = 0; i < count; ++i) {
+    StrAppend(&str, "}");
+  }
+  ow_.StartObject("");
+  for (int i = 0; i < count; ++i) {
+    ow_.StartObject("a");
+  }
+  ow_.RenderString("nest64", "v1")
+      ->RenderBool("nest64", false)
+      ->StartList("nest64")
+      ->RenderString("", "v2")
+      ->EndList();
+  for (int i = 0; i < count; ++i) {
+    ow_.EndObject();
+  }
+  ow_.EndObject();
+  DoTest(str, 0);
+}
+
+TEST_F(JsonStreamParserTest, DeepNestJsonExceedLimit) {
+  int count = 98;
+  string str;
+  for (int i = 0; i < count; ++i) {
+    StrAppend(&str, "{'a':");
+  }
+  // Supports trailing commas.
+  StrAppend(&str,
+                  "{'nest11' : [{'nest12' : null,},],"
+                  "'nest21' : {'nest22' : {'nest23' : false}}}");
+  for (int i = 0; i < count; ++i) {
+    StrAppend(&str, "}");
+  }
+  DoErrorTest(str, 0,
+              "Message too deep. Max recursion depth reached for key 'nest22'");
 }
 
 }  // namespace converter

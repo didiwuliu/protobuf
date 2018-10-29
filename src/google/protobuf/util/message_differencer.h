@@ -51,6 +51,8 @@
 #include <google/protobuf/unknown_field_set.h>
 #include <google/protobuf/util/field_comparator.h>
 
+#include <google/protobuf/port_def.inc>
+
 namespace google {
 namespace protobuf {
 
@@ -60,10 +62,11 @@ class FieldDescriptor;
 namespace io {
 class ZeroCopyOutputStream;
 class Printer;
-}
+}  // namespace io
 
 namespace util {
 
+class DefaultFieldComparator;
 class FieldContext;  // declared below MessageDifferencer
 
 // A basic differencer that can be used to determine
@@ -105,7 +108,7 @@ class FieldContext;  // declared below MessageDifferencer
 // guard it with a lock to use the same MessageDifferencer instance from
 // multiple threads. Note that it's fine to call static comparison methods
 // (like MessageDifferencer::Equals) concurrently.
-class LIBPROTOBUF_EXPORT MessageDifferencer {
+class PROTOBUF_EXPORT MessageDifferencer {
  public:
   // Determines whether the supplied messages are equal. Equality is defined as
   // all fields within the two messages being set to the same value. Primitive
@@ -174,10 +177,8 @@ class LIBPROTOBUF_EXPORT MessageDifferencer {
 
     // If "field" is a repeated field which is being treated as a map or
     // a set (see TreatAsMap() and TreatAsSet(), below), new_index indicates
-    // the index the position to which the element has moved.  This only
-    // applies to ReportMoved() and (in the case of TreatAsMap())
-    // ReportModified().  In all other cases, "new_index" will have the same
-    // value as "index".
+    // the index the position to which the element has moved.  If the element
+    // has not moved, "new_index" will have the same value as "index".
     int new_index;
 
     // For unknown fields, these are the pointers to the UnknownFieldSet
@@ -213,7 +214,7 @@ class LIBPROTOBUF_EXPORT MessageDifferencer {
   // FieldDescriptors. The first will be the field of the embedded message
   // itself and the second will be the actual field in the embedded message
   // that was added/deleted/modified.
-  class LIBPROTOBUF_EXPORT Reporter {
+  class PROTOBUF_EXPORT Reporter {
    public:
     Reporter();
     virtual ~Reporter();
@@ -241,18 +242,18 @@ class LIBPROTOBUF_EXPORT MessageDifferencer {
     // mutually exclusive. If a field has been both moved and modified, then
     // only ReportModified will be called.
     virtual void ReportMoved(
-        const Message& message1,
-        const Message& message2,
-        const std::vector<SpecificField>& field_path) { }
+        const Message& /* message1 */,
+        const Message& /* message2 */,
+        const std::vector<SpecificField>& /* field_path */) { }
 
     // Reports that two fields match. Useful for doing side-by-side diffs.
     // This function is mutually exclusive with ReportModified and ReportMoved.
     // Note that you must call set_report_matches(true) before calling Compare
     // to make use of this function.
     virtual void ReportMatched(
-        const Message& message1,
-        const Message& message2,
-        const std::vector<SpecificField>& field_path) { }
+        const Message& /* message1 */,
+        const Message& /* message2 */,
+        const std::vector<SpecificField>& /* field_path */) { }
 
     // Reports that two fields would have been compared, but the
     // comparison has been skipped because the field was marked as
@@ -274,16 +275,16 @@ class LIBPROTOBUF_EXPORT MessageDifferencer {
     // the fields are equal or not (perhaps with a second call to
     // Compare()), if it cares.
     virtual void ReportIgnored(
-        const Message& message1,
-        const Message& message2,
-        const std::vector<SpecificField>& field_path) { }
+        const Message& /* message1 */,
+        const Message& /* message2 */,
+        const std::vector<SpecificField>& /* field_path */) { }
 
     // Report that an unknown field is ignored. (see comment above).
     // Note this is a different function since the last SpecificField in field
     // path has a null field.  This could break existing Reporter.
     virtual void ReportUnknownFieldIgnored(
-        const Message& message1, const Message& message2,
-        const std::vector<SpecificField>& field_path) {}
+        const Message& /* message1 */, const Message& /* message2 */,
+        const std::vector<SpecificField>& /* field_path */) {}
 
    private:
     GOOGLE_DISALLOW_EVIL_CONSTRUCTORS(Reporter);
@@ -291,15 +292,15 @@ class LIBPROTOBUF_EXPORT MessageDifferencer {
 
   // MapKeyComparator is used to determine if two elements have the same key
   // when comparing elements of a repeated field as a map.
-  class LIBPROTOBUF_EXPORT MapKeyComparator {
+  class PROTOBUF_EXPORT MapKeyComparator {
    public:
     MapKeyComparator();
     virtual ~MapKeyComparator();
 
     virtual bool IsMatch(
-        const Message& message1,
-        const Message& message2,
-        const std::vector<SpecificField>& parent_fields) const {
+        const Message& /* message1 */,
+        const Message& /* message2 */,
+        const std::vector<SpecificField>& /* parent_fields */) const {
       GOOGLE_CHECK(false) << "IsMatch() is not implemented.";
       return false;
     }
@@ -314,25 +315,25 @@ class LIBPROTOBUF_EXPORT MessageDifferencer {
   // field IsIgnored is called on each added IgnoreCriteria until one returns
   // true or all return false.
   // IsIgnored is called for fields where at least one side has a value.
-  class LIBPROTOBUF_EXPORT IgnoreCriteria {
+  class PROTOBUF_EXPORT IgnoreCriteria {
    public:
     IgnoreCriteria();
     virtual ~IgnoreCriteria();
 
     // Returns true if the field should be ignored.
     virtual bool IsIgnored(
-        const Message& message1,
-        const Message& message2,
-        const FieldDescriptor* field,
-        const std::vector<SpecificField>& parent_fields) = 0;
+        const Message& /* message1 */,
+        const Message& /* message2 */,
+        const FieldDescriptor* /* field */,
+        const std::vector<SpecificField>& /* parent_fields */) = 0;
 
     // Returns true if the unknown field should be ignored.
     // Note: This will be called for unknown fields as well in which case
     //       field.field will be null.
     virtual bool IsUnknownFieldIgnored(
-        const Message& message1, const Message& message2,
-        const SpecificField& field,
-        const std::vector<SpecificField>& parent_fields) {
+        const Message& /* message1 */, const Message& /* message2 */,
+        const SpecificField& /* field */,
+        const std::vector<SpecificField>& /* parent_fields */) {
       return false;
     }
   };
@@ -372,7 +373,7 @@ class LIBPROTOBUF_EXPORT MessageDifferencer {
                  // repeated fields have different numbers of elements, the
                  // unpaired elements are reported using ReportAdded() or
                  // ReportDeleted().
-    AS_SET,      // Treat all the repeated fields as sets by default.
+    AS_SET,      // Treat all the repeated fields as sets.
                  // See TreatAsSet(), as below.
   };
 
@@ -385,6 +386,11 @@ class LIBPROTOBUF_EXPORT MessageDifferencer {
   // positions.  ReportModified() is never used for this repeated field.  If
   // the only differences between the compared messages is that some fields
   // have been moved, then the comparison returns true.
+  //
+  // Note that despite the name of this method, this is really
+  // comparison as multisets: if one side of the comparison has a duplicate
+  // in the repeated field but the other side doesn't, this will count as
+  // a mismatch.
   //
   // If the scope of comparison is set to PARTIAL, then in addition to what's
   // above, extra values added to repeated fields of the second message will
@@ -470,6 +476,10 @@ class LIBPROTOBUF_EXPORT MessageDifferencer {
       const FieldDescriptor* field,
       const MapKeyComparator* key_comparator);
 
+  // Initiates and returns a new instance of MultipleFieldsMapKeyComparator.
+  MapKeyComparator* CreateMultipleFieldsMapKeyComparator(
+      const std::vector<std::vector<const FieldDescriptor*> >& key_field_paths);
+
   // Add a custom ignore criteria that is evaluated in addition to the
   // ignored fields added with IgnoreField.
   // Takes ownership of ignore_criteria.
@@ -518,6 +528,19 @@ class LIBPROTOBUF_EXPORT MessageDifferencer {
     report_matches_ = report_matches;
   }
 
+  // Tells the differencer whether or not to report moves (in a set or map
+  // repeated field). This method must be called before Compare. The default for
+  // a new differencer is true.
+  void set_report_moves(bool report_moves) {
+    report_moves_ = report_moves;
+  }
+
+  // Tells the differencer whether or not to report ignored values. This method
+  // must be called before Compare. The default for a new differencer is true.
+  void set_report_ignores(bool report_ignores) {
+    report_ignores_ = report_ignores;
+  }
+
   // Sets the scope of the comparison (as defined in the Scope enumeration
   // above) that is used by this differencer when determining which fields to
   // compare between the messages.
@@ -558,7 +581,7 @@ class LIBPROTOBUF_EXPORT MessageDifferencer {
   // Automatically creates a reporter that will output the differences
   // found (if any) to the specified output string pointer. Note that this
   // method must be called before Compare.
-  void ReportDifferencesToString(string* output);
+  void ReportDifferencesToString(std::string* output);
 
   // Tells the MessageDifferencer to report differences via the specified
   // reporter. Note that this method must be called before Compare for
@@ -578,11 +601,11 @@ class LIBPROTOBUF_EXPORT MessageDifferencer {
   // complete until after you destroy the reporter. For example, if you use a
   // StreamReporter to write to a StringOutputStream, the target string may
   // contain uninitialized data until the reporter is destroyed.
-  class LIBPROTOBUF_EXPORT StreamReporter : public Reporter {
+  class PROTOBUF_EXPORT StreamReporter : public Reporter {
    public:
     explicit StreamReporter(io::ZeroCopyOutputStream* output);
     explicit StreamReporter(io::Printer* printer);  // delimiter '$'
-    virtual ~StreamReporter();
+    ~StreamReporter() override;
 
     // When set to true, the stream reporter will also output aggregates nodes
     // (i.e. messages and groups) whose subfields have been modified. When
@@ -592,34 +615,35 @@ class LIBPROTOBUF_EXPORT MessageDifferencer {
     }
 
     // The following are implementations of the methods described above.
-    virtual void ReportAdded(const Message& message1, const Message& message2,
-                             const std::vector<SpecificField>& field_path);
 
-    virtual void ReportDeleted(const Message& message1,
-                               const Message& message2,
-                               const std::vector<SpecificField>& field_path);
+    void ReportAdded(const Message& message1, const Message& message2,
+                     const std::vector<SpecificField>& field_path) override;
 
-    virtual void ReportModified(const Message& message1,
-                                const Message& message2,
-                                const std::vector<SpecificField>& field_path);
+    void ReportDeleted(const Message& message1, const Message& message2,
+                       const std::vector<SpecificField>& field_path) override;
 
-    virtual void ReportMoved(const Message& message1,
-                             const Message& message2,
-                             const std::vector<SpecificField>& field_path);
+    void ReportModified(const Message& message1, const Message& message2,
+                        const std::vector<SpecificField>& field_path) override;
 
-    virtual void ReportMatched(const Message& message1,
-                               const Message& message2,
-                               const std::vector<SpecificField>& field_path);
+    void ReportMoved(const Message& message1, const Message& message2,
+                     const std::vector<SpecificField>& field_path) override;
 
-    virtual void ReportIgnored(const Message& message1,
-                               const Message& message2,
-                               const std::vector<SpecificField>& field_path);
+    void ReportMatched(const Message& message1, const Message& message2,
+                       const std::vector<SpecificField>& field_path) override;
 
-    virtual void ReportUnknownFieldIgnored(
+    void ReportIgnored(const Message& message1, const Message& message2,
+                       const std::vector<SpecificField>& field_path) override;
+
+    void ReportUnknownFieldIgnored(
         const Message& message1, const Message& message2,
-        const std::vector<SpecificField>& field_path);
+        const std::vector<SpecificField>& field_path) override;
 
    protected:
+    // Prints the specified path of fields to the buffer.  message is used to
+    // print map keys.
+    virtual void PrintPath(const std::vector<SpecificField>& field_path,
+                           bool left_side, const Message& message);
+
     // Prints the specified path of fields to the buffer.
     virtual void PrintPath(const std::vector<SpecificField>& field_path,
                            bool left_side);
@@ -637,7 +661,7 @@ class LIBPROTOBUF_EXPORT MessageDifferencer {
     virtual void PrintUnknownFieldValue(const UnknownField* unknown_field);
 
     // Just print a string
-    void Print(const string& str);
+    void Print(const std::string& str);
 
    private:
     io::Printer* printer_;
@@ -648,11 +672,26 @@ class LIBPROTOBUF_EXPORT MessageDifferencer {
   };
 
  private:
+  friend class DefaultFieldComparator;
+
   // A MapKeyComparator to be used in TreatAsMapUsingKeyComparator.
   // Implementation of this class needs to do field value comparison which
   // relies on some private methods of MessageDifferencer. That's why this
   // class is declared as a nested class of MessageDifferencer.
   class MultipleFieldsMapKeyComparator;
+
+  // A MapKeyComparator for use with map_entries.
+  class PROTOBUF_EXPORT MapEntryKeyComparator : public MapKeyComparator {
+   public:
+    explicit MapEntryKeyComparator(MessageDifferencer* message_differencer);
+    bool IsMatch(
+        const Message& message1, const Message& message2,
+        const std::vector<SpecificField>& parent_fields) const override;
+
+   private:
+    MessageDifferencer* message_differencer_;
+  };
+
   // Returns true if field1's number() is less than field2's.
   static bool FieldBefore(const FieldDescriptor* field1,
                           const FieldDescriptor* field2);
@@ -677,8 +716,7 @@ class LIBPROTOBUF_EXPORT MessageDifferencer {
 
   // Compares all the unknown fields in two messages.
   bool CompareUnknownFields(const Message& message1, const Message& message2,
-                            const google::protobuf::UnknownFieldSet&,
-                            const google::protobuf::UnknownFieldSet&,
+                            const UnknownFieldSet&, const UnknownFieldSet&,
                             std::vector<SpecificField>* parent_fields);
 
   // Compares the specified messages for the requested field lists. The field
@@ -765,9 +803,10 @@ class LIBPROTOBUF_EXPORT MessageDifferencer {
                              const SpecificField& field,
                              const std::vector<SpecificField>& parent_fields);
 
-  // Returns MapKeyComparator* when this field has been configured to
-  // be treated as a map.  If not, returns NULL.
-  const MapKeyComparator* GetMapKeyComparator(const FieldDescriptor* field);
+  // Returns MapKeyComparator* when this field has been configured to be treated
+  // as a map or its is_map() return true.  If not, returns NULL.
+  const MapKeyComparator* GetMapKeyComparator(
+      const FieldDescriptor* field) const;
 
   // Attempts to match indices of a repeated field, so that the contained values
   // match. Clears output vectors and sets their values to indices of paired
@@ -786,7 +825,7 @@ class LIBPROTOBUF_EXPORT MessageDifferencer {
 
   // If "any" is of type google.protobuf.Any, extract its payload using
   // DynamicMessageFactory and store in "data".
-  bool UnpackAny(const Message& any, google::protobuf::scoped_ptr<Message>* data);
+  bool UnpackAny(const Message& any, std::unique_ptr<Message>* data);
 
   // Checks if index is equal to new_index in all the specific fields.
   static bool CheckPathChanged(const std::vector<SpecificField>& parent_fields);
@@ -817,22 +856,24 @@ class LIBPROTOBUF_EXPORT MessageDifferencer {
   // MapKeyComparator is created for comparison purpose.
   std::vector<MapKeyComparator*> owned_key_comparators_;
   FieldKeyComparatorMap map_field_key_comparator_;
+  MapEntryKeyComparator map_entry_key_comparator_;
   std::vector<IgnoreCriteria*> ignore_criteria_;
 
   FieldSet ignored_fields_;
 
-  bool compare_unknown_fields_;
   bool report_matches_;
+  bool report_moves_;
+  bool report_ignores_;
 
-  string* output_string_;
+  std::string* output_string_;
 
-  google::protobuf::scoped_ptr<DynamicMessageFactory> dynamic_message_factory_;
+  std::unique_ptr<DynamicMessageFactory> dynamic_message_factory_;
   GOOGLE_DISALLOW_EVIL_CONSTRUCTORS(MessageDifferencer);
 };
 
 // This class provides extra information to the FieldComparator::Compare
 // function.
-class LIBPROTOBUF_EXPORT FieldContext {
+class PROTOBUF_EXPORT FieldContext {
  public:
   explicit FieldContext(
       std::vector<MessageDifferencer::SpecificField>* parent_fields)
@@ -846,8 +887,10 @@ class LIBPROTOBUF_EXPORT FieldContext {
   std::vector<MessageDifferencer::SpecificField>* parent_fields_;
 };
 
-}
-}
-
+}  // namespace util
+}  // namespace protobuf
 }  // namespace google
+
+#include <google/protobuf/port_undef.inc>
+
 #endif  // GOOGLE_PROTOBUF_UTIL_MESSAGE_DIFFERENCER_H__

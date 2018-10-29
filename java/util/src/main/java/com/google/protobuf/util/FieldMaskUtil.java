@@ -235,7 +235,7 @@ public class FieldMaskUtil {
   /**
    * Converts a FieldMask to its canonical form. In the canonical form of a
    * FieldMask, all field paths are sorted alphabetically and redundant field
-   * paths are moved.
+   * paths are removed.
    */
   public static FieldMask normalize(FieldMask mask) {
     return new FieldMaskTree(mask).toFieldMask();
@@ -311,16 +311,19 @@ public class FieldMaskUtil {
       return replacePrimitiveFields;
     }
 
-    public void setReplaceMessageFields(boolean value) {
+    public MergeOptions setReplaceMessageFields(boolean value) {
       replaceMessageFields = value;
+      return this;
     }
 
-    public void setReplaceRepeatedFields(boolean value) {
+    public MergeOptions setReplaceRepeatedFields(boolean value) {
       replaceRepeatedFields = value;
+      return this;
     }
 
-    public void setReplacePrimitiveFields(boolean value) {
+    public MergeOptions setReplacePrimitiveFields(boolean value) {
       replacePrimitiveFields = value;
+      return this;
     }
   }
 

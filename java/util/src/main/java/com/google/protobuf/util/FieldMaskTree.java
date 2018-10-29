@@ -34,7 +34,6 @@ import com.google.protobuf.Descriptors.Descriptor;
 import com.google.protobuf.Descriptors.FieldDescriptor;
 import com.google.protobuf.FieldMask;
 import com.google.protobuf.Message;
-
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map.Entry;
@@ -217,7 +216,12 @@ final class FieldMaskTree {
       Message source,
       Message.Builder destination,
       FieldMaskUtil.MergeOptions options) {
-    assert source.getDescriptorForType() == destination.getDescriptorForType();
+    if (source.getDescriptorForType() != destination.getDescriptorForType()) {
+      throw new IllegalArgumentException(
+          String.format(
+              "source (%s) and destination (%s) descriptor must be equal",
+              source.getDescriptorForType(), destination.getDescriptorForType()));
+    }
 
     Descriptor descriptor = source.getDescriptorForType();
     for (Entry<String, Node> entry : node.children.entrySet()) {
@@ -236,16 +240,18 @@ final class FieldMaskTree {
               "Field \""
                   + field.getFullName()
                   + "\" is not a "
-                  + "singluar message field and cannot have sub-fields.");
+                  + "singular message field and cannot have sub-fields.");
+          continue;
+        }
+        if (!source.hasField(field) && !destination.hasField(field)) {
+          // If the message field is not present in both source and destination, skip recursing
+          // so we don't create unnecessary empty messages.
           continue;
         }
         String childPath = path.isEmpty() ? entry.getKey() : path + "." + entry.getKey();
-        merge(
-            entry.getValue(),
-            childPath,
-            (Message) source.getField(field),
-            destination.getFieldBuilder(field),
-            options);
+        Message.Builder childBuilder = ((Message) destination.getField(field)).toBuilder();
+        merge(entry.getValue(), childPath, (Message) source.getField(field), childBuilder, options);
+        destination.setField(field, childBuilder.buildPartial());
         continue;
       }
       if (field.isRepeated()) {
@@ -266,7 +272,12 @@ final class FieldMaskTree {
             }
           } else {
             if (source.hasField(field)) {
-              destination.getFieldBuilder(field).mergeFrom((Message) source.getField(field));
+              destination.setField(
+                  field,
+                  ((Message) destination.getField(field))
+                      .toBuilder()
+                      .mergeFrom((Message) source.getField(field))
+                      .build());
             }
           }
         } else {

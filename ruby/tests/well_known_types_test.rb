@@ -13,10 +13,18 @@ class TestWellKnownTypes < Test::Unit::TestCase
     assert_equal Time.at(12345), ts.to_time
     assert_equal 12345, ts.to_i
 
-    ts.from_time(Time.at(123456, 654321))
+    # millisecond accuracy
+    time = Time.at(123456, 654321)
+    ts.from_time(time)
     assert_equal 123456, ts.seconds
     assert_equal 654321000, ts.nanos
-    assert_equal Time.at(123456.654321), ts.to_time
+    assert_equal time, ts.to_time
+
+    # nanosecond accuracy
+    time = Time.at(123456, Rational(654321321, 1000))
+    ts.from_time(time)
+    assert_equal 654321321, ts.nanos
+    assert_equal time, ts.to_time
   end
 
   def test_duration
@@ -52,6 +60,9 @@ class TestWellKnownTypes < Test::Unit::TestCase
     assert_equal(Google::Protobuf::ListValue.from_a(sublist),
                  struct["sublist"])
 
+    assert_equal true, struct.has_key?("null")
+    assert_equal false, struct.has_key?("missing_key")
+
     should_equal = {
       "number" => 12345,
       "boolean-true" => true,
@@ -73,6 +84,9 @@ class TestWellKnownTypes < Test::Unit::TestCase
 
     # to_h returns a fully-flattened Ruby structure (Hash and Array).
     assert_equal(should_equal, struct.to_h)
+
+    # Test that we can safely access a missing key
+    assert_equal(nil, struct["missing_key"])
 
     # Test that we can assign Struct and ListValue directly.
     struct["substruct"] = Google::Protobuf::Struct.from_hash(substruct)
@@ -112,9 +126,15 @@ class TestWellKnownTypes < Test::Unit::TestCase
   end
 
   def test_any
-    any = Google::Protobuf::Any.new
     ts = Google::Protobuf::Timestamp.new(seconds: 12345, nanos: 6789)
+
+    any = Google::Protobuf::Any.new
     any.pack(ts)
+
+    assert any.is(Google::Protobuf::Timestamp)
+    assert_equal ts, any.unpack(Google::Protobuf::Timestamp)
+
+    any = Google::Protobuf::Any.pack(ts)
 
     assert any.is(Google::Protobuf::Timestamp)
     assert_equal ts, any.unpack(Google::Protobuf::Timestamp)

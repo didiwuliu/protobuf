@@ -20,11 +20,10 @@ languages = [
   ]),
   Language("Java", [
       "java",
-      "javanano",
-      "src/google/protobuf/compiler/cpp",
+      "src/google/protobuf/compiler/java",
   ]),
   Language("Python", [
-      "javanano",
+      "python",
       "src/google/protobuf/compiler/python",
   ]),
   Language("JavaScript", [
@@ -57,9 +56,10 @@ previous = sys.argv[1]
 
 for language in languages:
   print(language.name)
+  sys.stdout.flush()
   os.system(("git log --pretty=oneline --abbrev-commit %s...HEAD %s | " +
              "sed -e 's/^/ - /'") % (previous, " ".join(language.pathspec)))
   print("")
 
 print("To view a commit on GitHub: " +
-      "https://github.com/google/protobuf/commit/<commit id>")
+      "https://github.com/protocolbuffers/protobuf/commit/<commit id>")

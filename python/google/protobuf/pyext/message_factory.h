@@ -33,7 +33,7 @@
 
 #include <Python.h>
 
-#include <google/protobuf/stubs/hash.h>
+#include <unordered_map>
 #include <google/protobuf/descriptor.h>
 #include <google/protobuf/pyext/descriptor_pool.h>
 
@@ -66,7 +66,8 @@ struct PyMessageFactory {
   //
   // Descriptor pointers stored here are owned by the DescriptorPool above.
   // Python references to classes are owned by this PyDescriptorPool.
-  typedef hash_map<const Descriptor*, CMessageClass*> ClassesByMessageMap;
+  typedef std::unordered_map<const Descriptor*, CMessageClass*>
+      ClassesByMessageMap;
   ClassesByMessageMap* classes_by_descriptor;
 };
 
@@ -82,14 +83,14 @@ PyMessageFactory* NewMessageFactory(PyTypeObject* type, PyDescriptorPool* pool);
 int RegisterMessageClass(PyMessageFactory* self,
                          const Descriptor* message_descriptor,
                          CMessageClass* message_class);
-
-// Retrieves the Python class registered with the given message descriptor.
-//
-// Returns a *borrowed* reference if found, otherwise returns NULL with an
-// exception set.
+// Retrieves the Python class registered with the given message descriptor, or
+// fail with a TypeError. Returns a *borrowed* reference.
 CMessageClass* GetMessageClass(PyMessageFactory* self,
                                const Descriptor* message_descriptor);
-
+// Retrieves the Python class registered with the given message descriptor.
+// The class is created if not done yet. Returns a *new* reference.
+CMessageClass* GetOrCreateMessageClass(PyMessageFactory* self,
+                                       const Descriptor* message_descriptor);
 }  // namespace message_factory
 
 // Initialize objects used by this module.
@@ -98,6 +99,6 @@ bool InitMessageFactory();
 
 }  // namespace python
 }  // namespace protobuf
-
 }  // namespace google
+
 #endif  // GOOGLE_PROTOBUF_PYTHON_CPP_MESSAGE_FACTORY_H__

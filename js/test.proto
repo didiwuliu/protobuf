@@ -165,6 +165,13 @@ message TestClone {
   extensions 10 to max;
 }
 
+message TestCloneExtension {
+  extend TestClone {
+    optional TestCloneExtension low_ext = 11;
+  }
+  optional int32 f = 1;
+}
+
 message CloneExtension {
   extend TestClone {
     optional CloneExtension ext_field = 100;
@@ -234,7 +241,16 @@ message TestEndsWithBytes {
   optional bytes data = 2;
 }
 
+
+message Int64Types {
+  optional int64 int64_normal = 1 [jstype=JS_NORMAL];
+  optional sint64 int64_string = 2 [jstype=JS_STRING];
+  optional uint64 int64_number = 3 [jstype=JS_NUMBER];
+
+}
+
 message TestMapFieldsNoBinary {
+
   map<string, string> map_string_string = 1;
   map<string, int32> map_string_int32 = 2;
   map<string, int64> map_string_int64 = 3;
@@ -258,6 +274,7 @@ enum MapValueEnumNoBinary {
 }
 
 message MapValueMessageNoBinary {
+
   optional int32 foo = 1;
 }
 
@@ -268,3 +285,4 @@ message Deeply {
     }
   }
 }
+

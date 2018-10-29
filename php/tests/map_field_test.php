@@ -1,12 +1,11 @@
 <?php
 
-require_once('test.pb.php');
 require_once('test_util.php');
 
 use Google\Protobuf\Internal\GPBType;
 use Google\Protobuf\Internal\MapField;
 use Foo\TestMessage;
-use Foo\TestMessage_Sub;
+use Foo\TestMessage\Sub;
 
 class MapFieldTest extends PHPUnit_Framework_TestCase {
 
@@ -57,42 +56,23 @@ class MapFieldTest extends PHPUnit_Framework_TestCase {
         unset($arr['3.1']);
         unset($arr[MAX_INT32_STRING]);
         $this->assertEquals(0, count($arr));
-    }
 
-    /**
-     * @expectedException PHPUnit_Framework_Error
-     */
-    public function testInt32SetStringKeyFail()
-    {
+        // Test foreach.
         $arr = new MapField(GPBType::INT32, GPBType::INT32);
-        $arr ['abc']= 0;
-    }
-
-    /**
-     * @expectedException PHPUnit_Framework_Error
-     */
-    public function testInt32SetStringValueFail()
-    {
-        $arr = new MapField(GPBType::INT32, GPBType::INT32);
-        $arr [0]= 'abc';
-    }
-
-    /**
-     * @expectedException PHPUnit_Framework_Error
-     */
-    public function testInt32SetMessageKeyFail()
-    {
-        $arr = new MapField(GPBType::INT32, GPBType::INT32);
-        $arr [new TestMessage_Sub()]= 0;
-    }
-
-    /**
-     * @expectedException PHPUnit_Framework_Error
-     */
-    public function testInt32SetMessageValueFail()
-    {
-        $arr = new MapField(GPBType::INT32, GPBType::INT32);
-        $arr [0]= new TestMessage_Sub();
+        for ($i = 0; $i < 3; $i++) {
+          $arr[$i] = $i;
+        }
+        $i = 0;
+        $arr_test = [];
+        foreach ($arr as $key => $val) {
+          $this->assertSame($key, $val);
+          $arr_test[] = $key;
+          $i++;
+        }
+        $this->assertTrue(isset($arr_test[0]));
+        $this->assertTrue(isset($arr_test[1]));
+        $this->assertTrue(isset($arr_test[2]));
+        $this->assertSame(3, $i);
     }
 
     #########################################################
@@ -160,42 +140,6 @@ class MapFieldTest extends PHPUnit_Framework_TestCase {
         $this->assertEquals(0, count($arr));
     }
 
-    /**
-     * @expectedException PHPUnit_Framework_Error
-     */
-    public function testUint32SetStringKeyFail()
-    {
-        $arr = new MapField(GPBType::UINT32, GPBType::UINT32);
-        $arr ['abc']= 0;
-    }
-
-    /**
-     * @expectedException PHPUnit_Framework_Error
-     */
-    public function testUint32SetStringValueFail()
-    {
-        $arr = new MapField(GPBType::UINT32, GPBType::UINT32);
-        $arr [0]= 'abc';
-    }
-
-    /**
-     * @expectedException PHPUnit_Framework_Error
-     */
-    public function testUint32SetMessageKeyFail()
-    {
-        $arr = new MapField(GPBType::UINT32, GPBType::UINT32);
-        $arr [new TestMessage_Sub()]= 0;
-    }
-
-    /**
-     * @expectedException PHPUnit_Framework_Error
-     */
-    public function testUint32SetMessageValueFail()
-    {
-        $arr = new MapField(GPBType::UINT32, GPBType::UINT32);
-        $arr [0]= new TestMessage_Sub();
-    }
-
     #########################################################
     # Test int64 field.
     #########################################################
@@ -205,9 +149,14 @@ class MapFieldTest extends PHPUnit_Framework_TestCase {
 
         // Test integer argument.
         $arr[MAX_INT64] = MAX_INT64;
-        $this->assertSame(MAX_INT64, $arr[MAX_INT64]);
         $arr[MIN_INT64] = MIN_INT64;
-        $this->assertEquals(MIN_INT64, $arr[MIN_INT64]);
+        if (PHP_INT_SIZE == 4) {
+            $this->assertSame(MAX_INT64_STRING, $arr[MAX_INT64_STRING]);
+            $this->assertSame(MIN_INT64_STRING, $arr[MIN_INT64_STRING]);
+        } else {
+            $this->assertSame(MAX_INT64, $arr[MAX_INT64]);
+            $this->assertSame(MIN_INT64, $arr[MIN_INT64]);
+        }
         $this->assertEquals(2, count($arr));
         unset($arr[MAX_INT64]);
         unset($arr[MIN_INT64]);
@@ -215,62 +164,37 @@ class MapFieldTest extends PHPUnit_Framework_TestCase {
 
         // Test float argument.
         $arr[1.1] = 1.1;
-        $this->assertSame(1, $arr[1]);
+        if (PHP_INT_SIZE == 4) {
+            $this->assertSame('1', $arr['1']);
+        } else {
+            $this->assertSame(1, $arr[1]);
+        }
         $this->assertEquals(1, count($arr));
         unset($arr[1.1]);
         $this->assertEquals(0, count($arr));
 
         // Test string argument.
         $arr['2'] = '2';
-        $this->assertSame(2, $arr[2]);
         $arr['3.1'] = '3.1';
-        $this->assertSame(3, $arr[3]);
         $arr[MAX_INT64_STRING] = MAX_INT64_STRING;
-        $this->assertSame(MAX_INT64, $arr[MAX_INT64]);
         $arr[MIN_INT64_STRING] = MIN_INT64_STRING;
-        $this->assertEquals(MIN_INT64, $arr[MIN_INT64]);
+        if (PHP_INT_SIZE == 4) {
+            $this->assertSame('2', $arr['2']);
+            $this->assertSame('3', $arr['3']);
+            $this->assertSame(MAX_INT64_STRING, $arr[MAX_INT64_STRING]);
+            $this->assertSame(MIN_INT64_STRING, $arr[MIN_INT64_STRING]);
+        } else {
+            $this->assertSame(2, $arr[2]);
+            $this->assertSame(3, $arr[3]);
+            $this->assertSame(MAX_INT64, $arr[MAX_INT64]);
+            $this->assertSame(MIN_INT64, $arr[MIN_INT64]);
+        }
         $this->assertEquals(4, count($arr));
         unset($arr['2']);
         unset($arr['3.1']);
         unset($arr[MAX_INT64_STRING]);
         unset($arr[MIN_INT64_STRING]);
         $this->assertEquals(0, count($arr));
-    }
-
-    /**
-     * @expectedException PHPUnit_Framework_Error
-     */
-    public function testInt64SetStringKeyFail()
-    {
-        $arr = new MapField(GPBType::INT64, GPBType::INT64);
-        $arr ['abc']= 0;
-    }
-
-    /**
-     * @expectedException PHPUnit_Framework_Error
-     */
-    public function testInt64SetStringValueFail()
-    {
-        $arr = new MapField(GPBType::INT64, GPBType::INT64);
-        $arr [0]= 'abc';
-    }
-
-    /**
-     * @expectedException PHPUnit_Framework_Error
-     */
-    public function testInt64SetMessageKeyFail()
-    {
-        $arr = new MapField(GPBType::INT64, GPBType::INT64);
-        $arr [new TestMessage_Sub()]= 0;
-    }
-
-    /**
-     * @expectedException PHPUnit_Framework_Error
-     */
-    public function testInt64SetMessageValueFail()
-    {
-        $arr = new MapField(GPBType::INT64, GPBType::INT64);
-        $arr [0]= new TestMessage_Sub();
     }
 
     #########################################################
@@ -282,66 +206,46 @@ class MapFieldTest extends PHPUnit_Framework_TestCase {
 
         // Test integer argument.
         $arr[MAX_UINT64] = MAX_UINT64;
-        $this->assertEquals(MAX_UINT64, $arr[MAX_UINT64]);
+        if (PHP_INT_SIZE == 4) {
+            $this->assertSame(MAX_UINT64_STRING, $arr[MAX_UINT64_STRING]);
+        } else {
+            $this->assertSame(MAX_UINT64, $arr[MAX_UINT64]);
+        }
         $this->assertEquals(1, count($arr));
         unset($arr[MAX_UINT64]);
         $this->assertEquals(0, count($arr));
 
         // Test float argument.
         $arr[1.1] = 1.1;
-        $this->assertSame(1, $arr[1]);
+        if (PHP_INT_SIZE == 4) {
+            $this->assertSame('1', $arr['1']);
+        } else {
+            $this->assertSame(1, $arr[1]);
+        }
         $this->assertEquals(1, count($arr));
         unset($arr[1.1]);
         $this->assertEquals(0, count($arr));
 
         // Test string argument.
         $arr['2'] = '2';
-        $this->assertSame(2, $arr[2]);
         $arr['3.1'] = '3.1';
-        $this->assertSame(3, $arr[3]);
         $arr[MAX_UINT64_STRING] = MAX_UINT64_STRING;
-        $this->assertEquals(MAX_UINT64, $arr[MAX_UINT64]);
+
+        if (PHP_INT_SIZE == 4) {
+            $this->assertSame('2', $arr['2']);
+            $this->assertSame('3', $arr['3']);
+            $this->assertSame(MAX_UINT64_STRING, $arr[MAX_UINT64_STRING]);
+        } else {
+            $this->assertSame(2, $arr[2]);
+            $this->assertSame(3, $arr[3]);
+            $this->assertSame(MAX_UINT64, $arr[MAX_UINT64]);
+        }
+
         $this->assertEquals(3, count($arr));
         unset($arr['2']);
         unset($arr['3.1']);
         unset($arr[MAX_UINT64_STRING]);
         $this->assertEquals(0, count($arr));
-    }
-
-    /**
-     * @expectedException PHPUnit_Framework_Error
-     */
-    public function testUint64SetStringKeyFail()
-    {
-        $arr = new MapField(GPBType::UINT64, GPBType::UINT64);
-        $arr ['abc']= 0;
-    }
-
-    /**
-     * @expectedException PHPUnit_Framework_Error
-     */
-    public function testUint64SetStringValueFail()
-    {
-        $arr = new MapField(GPBType::UINT64, GPBType::UINT64);
-        $arr [0]= 'abc';
-    }
-
-    /**
-     * @expectedException PHPUnit_Framework_Error
-     */
-    public function testUint64SetMessageKeyFail()
-    {
-        $arr = new MapField(GPBType::UINT64, GPBType::UINT64);
-        $arr [new TestMessage_Sub()]= 0;
-    }
-
-    /**
-     * @expectedException PHPUnit_Framework_Error
-     */
-    public function testUint64SetMessageValueFail()
-    {
-        $arr = new MapField(GPBType::UINT64, GPBType::UINT64);
-        $arr [0]= new TestMessage_Sub();
     }
 
     #########################################################
@@ -366,24 +270,6 @@ class MapFieldTest extends PHPUnit_Framework_TestCase {
         $this->assertEquals(4, count($arr));
     }
 
-    /**
-     * @expectedException PHPUnit_Framework_Error
-     */
-    public function testFloatSetStringValueFail()
-    {
-        $arr = new MapField(GPBType::INT64, GPBType::FLOAT);
-        $arr [0]= 'abc';
-    }
-
-    /**
-     * @expectedException PHPUnit_Framework_Error
-     */
-    public function testFloatSetMessageValueFail()
-    {
-        $arr = new MapField(GPBType::INT64, GPBType::FLOAT);
-        $arr [0]= new TestMessage_Sub();
-    }
-
     #########################################################
     # Test double field.
     #########################################################
@@ -404,24 +290,6 @@ class MapFieldTest extends PHPUnit_Framework_TestCase {
         $this->assertEquals(3.1, $arr[3], '', MAX_FLOAT_DIFF);
 
         $this->assertEquals(4, count($arr));
-    }
-
-    /**
-     * @expectedException PHPUnit_Framework_Error
-     */
-    public function testDoubleSetStringValueFail()
-    {
-        $arr = new MapField(GPBType::INT64, GPBType::DOUBLE);
-        $arr [0]= 'abc';
-    }
-
-    /**
-     * @expectedException PHPUnit_Framework_Error
-     */
-    public function testDoubleSetMessageValueFail()
-    {
-        $arr = new MapField(GPBType::INT64, GPBType::DOUBLE);
-        $arr [0]= new TestMessage_Sub();
     }
 
     #########################################################
@@ -484,24 +352,6 @@ class MapFieldTest extends PHPUnit_Framework_TestCase {
         $this->assertEquals(0, count($arr));
     }
 
-    /**
-     * @expectedException PHPUnit_Framework_Error
-     */
-    public function testBoolSetMessageKeyFail()
-    {
-        $arr = new MapField(GPBType::BOOL, GPBType::BOOL);
-        $arr [new TestMessage_Sub()]= true;
-    }
-
-    /**
-     * @expectedException PHPUnit_Framework_Error
-     */
-    public function testBoolSetMessageValueFail()
-    {
-        $arr = new MapField(GPBType::BOOL, GPBType::BOOL);
-        $arr [true]= new TestMessage_Sub();
-    }
-
     #########################################################
     # Test string field.
     #########################################################
@@ -533,42 +383,23 @@ class MapFieldTest extends PHPUnit_Framework_TestCase {
         $this->assertEquals(1, count($arr));
         unset($arr[True]);
         $this->assertEquals(0, count($arr));
-    }
 
-    /**
-     * @expectedException PHPUnit_Framework_Error
-     */
-    public function testStringSetInvalidUTF8KeyFail()
-    {
+        // Test foreach.
         $arr = new MapField(GPBType::STRING, GPBType::STRING);
-        $arr[hex2bin("ff")]= 'abc';
-    }
-
-    /**
-     * @expectedException PHPUnit_Framework_Error
-     */
-    public function testStringSetInvalidUTF8ValueFail()
-    {
-        $arr = new MapField(GPBType::STRING, GPBType::STRING);
-        $arr ['abc']= hex2bin("ff");
-    }
-
-    /**
-     * @expectedException PHPUnit_Framework_Error
-     */
-    public function testStringSetMessageKeyFail()
-    {
-        $arr = new MapField(GPBType::STRING, GPBType::STRING);
-        $arr [new TestMessage_Sub()]= 'abc';
-    }
-
-    /**
-     * @expectedException PHPUnit_Framework_Error
-     */
-    public function testStringSetMessageValueFail()
-    {
-        $arr = new MapField(GPBType::STRING, GPBType::STRING);
-        $arr ['abc']= new TestMessage_Sub();
+        for ($i = 0; $i < 3; $i++) {
+          $arr[$i] = $i;
+        }
+        $i = 0;
+        $arr_test = [];
+        foreach ($arr as $key => $val) {
+          $this->assertSame($key, $val);
+          $arr_test[] = $key;
+          $i++;
+        }
+        $this->assertTrue(isset($arr_test['0']));
+        $this->assertTrue(isset($arr_test['1']));
+        $this->assertTrue(isset($arr_test['2']));
+        $this->assertSame(3, $i);
     }
 
     #########################################################
@@ -577,49 +408,38 @@ class MapFieldTest extends PHPUnit_Framework_TestCase {
 
     public function testMessage() {
         $arr = new MapField(GPBType::INT32,
-            GPBType::MESSAGE, TestMessage_Sub::class);
+            GPBType::MESSAGE, Sub::class);
 
         // Test append.
-        $sub_m = new TestMessage_Sub();
+        $sub_m = new Sub();
         $sub_m->setA(1);
         $arr[0] = $sub_m;
         $this->assertSame(1, $arr[0]->getA());
 
-        $null = NULL;
-        $arr[1] = $null;
-        $this->assertNull($arr[1]);
+        $this->assertEquals(1, count($arr));
 
-        $this->assertEquals(2, count($arr));
-    }
-
-    /**
-     * @expectedException PHPUnit_Framework_Error
-     */
-    public function testMessageSetIntValueFail()
-    {
-       $arr =
-           new MapField(GPBType::INT32, GPBType::MESSAGE, TestMessage::class);
-       $arr[0] = 0;
-    }
-
-    /**
-     * @expectedException PHPUnit_Framework_Error
-     */
-    public function testMessageSetStringValueFail()
-    {
-       $arr =
-           new MapField(GPBType::INT32, GPBType::MESSAGE, TestMessage::class);
-       $arr[0] = 'abc';
-    }
-
-    /**
-     * @expectedException PHPUnit_Framework_Error
-     */
-    public function testMessageSetOtherMessageValueFail()
-    {
-       $arr =
-           new MapField(GPBType::INT32, GPBType::MESSAGE, TestMessage::class);
-       $arr[0] = new TestMessage_Sub();
+        // Test foreach.
+        $arr = new MapField(GPBType::INT32,
+            GPBType::MESSAGE, Sub::class);
+        for ($i = 0; $i < 3; $i++) {
+          $arr[$i] = new Sub();;
+          $arr[$i]->setA($i);
+        }
+        $i = 0;
+        $key_test = [];
+        $value_test = [];
+        foreach ($arr as $key => $val) {
+          $key_test[] = $key;
+          $value_test[] = $val->getA();
+          $i++;
+        }
+        $this->assertTrue(isset($key_test['0']));
+        $this->assertTrue(isset($key_test['1']));
+        $this->assertTrue(isset($key_test['2']));
+        $this->assertTrue(isset($value_test['0']));
+        $this->assertTrue(isset($value_test['1']));
+        $this->assertTrue(isset($value_test['2']));
+        $this->assertSame(3, $i);
     }
 
     #########################################################
@@ -631,7 +451,7 @@ class MapFieldTest extends PHPUnit_Framework_TestCase {
     // {
     //     $arr = new MapField(GPBType::INT32,
     //         GPBType::MESSAGE, TestMessage::class);
-    //     $arr [0]= new TestMessage;
+    //     $arr[0] = new TestMessage;
     //     $arr[0]->SetMapRecursive($arr);
 
     //     // Clean up memory before test.

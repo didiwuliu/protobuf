@@ -28,6 +28,8 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+#include <unordered_map>
+
 #include <Python.h>
 
 #include <google/protobuf/dynamic_message.h>
@@ -100,7 +102,9 @@ PyObject* New(PyTypeObject* type, PyObject* args, PyObject* kwargs) {
       NewMessageFactory(type, reinterpret_cast<PyDescriptorPool*>(pool)));
 }
 
-static void Dealloc(PyMessageFactory* self) {
+static void Dealloc(PyObject* pself) {
+  PyMessageFactory* self = reinterpret_cast<PyMessageFactory*>(pself);
+
   // TODO(amauryfa): When the MessageFactory is not created from the
   // DescriptorPool this reference should be owned, not borrowed.
   // Py_CLEAR(self->pool);
@@ -111,7 +115,7 @@ static void Dealloc(PyMessageFactory* self) {
   }
   delete self->classes_by_descriptor;
   delete self->message_factory;
-  Py_TYPE(self)->tp_free(reinterpret_cast<PyObject*>(self));
+  Py_TYPE(self)->tp_free(pself);
 }
 
 // Add a message class to our database.
@@ -128,6 +132,73 @@ int RegisterMessageClass(PyMessageFactory* self,
     ret.first->second = message_class;
   }
   return 0;
+}
+
+CMessageClass* GetOrCreateMessageClass(PyMessageFactory* self,
+                                       const Descriptor* descriptor) {
+  // This is the same implementation as MessageFactory.GetPrototype().
+
+  // Do not create a MessageClass that already exists.
+  std::unordered_map<const Descriptor*, CMessageClass*>::iterator it =
+      self->classes_by_descriptor->find(descriptor);
+  if (it != self->classes_by_descriptor->end()) {
+    Py_INCREF(it->second);
+    return it->second;
+  }
+  ScopedPyObjectPtr py_descriptor(
+      PyMessageDescriptor_FromDescriptor(descriptor));
+  if (py_descriptor == NULL) {
+    return NULL;
+  }
+  // Create a new message class.
+  ScopedPyObjectPtr args(Py_BuildValue(
+      "s(){sOsOsO}", descriptor->name().c_str(),
+      "DESCRIPTOR", py_descriptor.get(),
+      "__module__", Py_None,
+      "message_factory", self));
+  if (args == NULL) {
+    return NULL;
+  }
+  ScopedPyObjectPtr message_class(PyObject_CallObject(
+      reinterpret_cast<PyObject*>(CMessageClass_Type), args.get()));
+  if (message_class == NULL) {
+    return NULL;
+  }
+  // Create messages class for the messages used by the fields, and registers
+  // all extensions for these messages during the recursion.
+  for (int field_idx = 0; field_idx < descriptor->field_count(); field_idx++) {
+    const Descriptor* sub_descriptor =
+        descriptor->field(field_idx)->message_type();
+    // It is NULL if the field type is not a message.
+    if (sub_descriptor != NULL) {
+      CMessageClass* result = GetOrCreateMessageClass(self, sub_descriptor);
+      if (result == NULL) {
+        return NULL;
+      }
+      Py_DECREF(result);
+    }
+  }
+
+  // Register extensions defined in this message.
+  for (int ext_idx = 0 ; ext_idx < descriptor->extension_count() ; ext_idx++) {
+    const FieldDescriptor* extension = descriptor->extension(ext_idx);
+    ScopedPyObjectPtr py_extended_class(
+        GetOrCreateMessageClass(self, extension->containing_type())
+            ->AsPyObject());
+    if (py_extended_class == NULL) {
+      return NULL;
+    }
+    ScopedPyObjectPtr py_extension(PyFieldDescriptor_FromDescriptor(extension));
+    if (py_extension == NULL) {
+      return NULL;
+    }
+    ScopedPyObjectPtr result(cmessage::RegisterExtension(
+        py_extended_class.get(), py_extension.get()));
+    if (result == NULL) {
+      return NULL;
+    }
+  }
+  return reinterpret_cast<CMessageClass*>(message_class.release());
 }
 
 // Retrieve the message class added to our database.
@@ -164,7 +235,7 @@ PyTypeObject PyMessageFactory_Type = {
     ".MessageFactory",                        // tp_name
     sizeof(PyMessageFactory),                 // tp_basicsize
     0,                                        // tp_itemsize
-    (destructor)message_factory::Dealloc,     // tp_dealloc
+    message_factory::Dealloc,                 // tp_dealloc
     0,                                        // tp_print
     0,                                        // tp_getattr
     0,                                        // tp_setattr

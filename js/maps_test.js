@@ -35,6 +35,11 @@ goog.require('goog.userAgent');
 goog.require('proto.jspb.test.MapValueEnum');
 goog.require('proto.jspb.test.MapValueMessage');
 goog.require('proto.jspb.test.TestMapFields');
+goog.require('proto.jspb.test.TestMapFieldsOptionalKeys');
+goog.require('proto.jspb.test.MapEntryOptionalKeysStringKey');
+goog.require('proto.jspb.test.MapEntryOptionalKeysInt32Key');
+goog.require('proto.jspb.test.MapEntryOptionalKeysInt64Key');
+goog.require('proto.jspb.test.MapEntryOptionalKeysBoolKey');
 
 // CommonJS-LoadFromFile: test_pb proto.jspb.test
 goog.require('proto.jspb.test.MapValueMessageNoBinary');
@@ -76,7 +81,7 @@ function toArray(iter) {
  * Helper: generate test methods for this TestMapFields class.
  * @param {?} msgInfo
  * @param {?} submessageCtor
- * @param {!string} suffix
+ * @param {string} suffix
  */
 function makeTests(msgInfo, submessageCtor, suffix) {
   /**
@@ -260,7 +265,41 @@ function makeTests(msgInfo, submessageCtor, suffix) {
       var decoded = msgInfo.deserializeBinary(serialized);
       checkMapFields(decoded);
     });
+    /**
+     * Tests deserialization of undefined map keys go to default values in binary format.
+     */
+    it('testMapDeserializationForUndefinedKeys', function() {
+      var testMessageOptionalKeys = new proto.jspb.test.TestMapFieldsOptionalKeys();
+      var mapEntryStringKey = new proto.jspb.test.MapEntryOptionalKeysStringKey();
+      mapEntryStringKey.setValue("a");
+      testMessageOptionalKeys.setMapStringString(mapEntryStringKey);
+      var mapEntryInt32Key = new proto.jspb.test.MapEntryOptionalKeysInt32Key();
+      mapEntryInt32Key.setValue("b");
+      testMessageOptionalKeys.setMapInt32String(mapEntryInt32Key);
+      var mapEntryInt64Key = new proto.jspb.test.MapEntryOptionalKeysInt64Key();
+      mapEntryInt64Key.setValue("c");
+      testMessageOptionalKeys.setMapInt64String(mapEntryInt64Key);
+      var mapEntryBoolKey = new proto.jspb.test.MapEntryOptionalKeysBoolKey();
+      mapEntryBoolKey.setValue("d");
+      testMessageOptionalKeys.setMapBoolString(mapEntryBoolKey);
+      var deserializedMessage = msgInfo.deserializeBinary(
+        testMessageOptionalKeys.serializeBinary()
+       );
+      checkMapEquals(deserializedMessage.getMapStringStringMap(), [
+        ['', 'a']
+      ]);
+      checkMapEquals(deserializedMessage.getMapInt32StringMap(), [
+        [0, 'b']
+      ]);
+      checkMapEquals(deserializedMessage.getMapInt64StringMap(), [
+        [0, 'c']
+      ]);
+      checkMapEquals(deserializedMessage.getMapBoolStringMap(), [
+        [false, 'd']
+      ]);
+    });
   }
+
 
   /**
    * Exercises the lazy map<->underlying array sync.
@@ -287,15 +326,63 @@ function makeTests(msgInfo, submessageCtor, suffix) {
     var a = msg.toArray();
     assertEquals(a[0], entries);  // retains original reference
   });
+
+  /**
+   * Returns IteratorIterables for entries(), keys() and values().
+   */
+  it('testIteratorIterables' + suffix, function() {
+    var msg = new msgInfo.constructor();
+    var m = msg.getMapStringStringMap();
+    m.set('key1', 'value1');
+    m.set('key2', 'value2');
+    var entryIterator = m.entries();
+    assertElementsEquals(entryIterator.next().value, ['key1', 'value1']);
+    assertElementsEquals(entryIterator.next().value, ['key2', 'value2']);
+    assertEquals(entryIterator.next().done, true);
+
+    if (typeof(Symbol) != 'undefined') {
+      var entryIterable = m.entries()[Symbol.iterator]();
+      assertElementsEquals(entryIterable.next().value, ['key1', 'value1']);
+      assertElementsEquals(entryIterable.next().value, ['key2', 'value2']);
+      assertEquals(entryIterable.next().done, true);
+    }
+
+    var keyIterator = m.keys();
+    assertEquals(keyIterator.next().value, 'key1');
+    assertEquals(keyIterator.next().value, 'key2');
+    assertEquals(keyIterator.next().done, true);
+
+    if (typeof(Symbol) != 'undefined') {
+      var keyIterable = m.keys()[Symbol.iterator]();
+      assertEquals(keyIterable.next().value, 'key1');
+      assertEquals(keyIterable.next().value, 'key2');
+      assertEquals(keyIterable.next().done, true);
+    }
+    var valueIterator = m.values();
+    assertEquals(valueIterator.next().value, 'value1');
+    assertEquals(valueIterator.next().value, 'value2');
+    assertEquals(valueIterator.next().done, true);
+
+    if (typeof(Symbol) != 'undefined') {
+      var valueIterable = m.values()[Symbol.iterator]();
+      assertEquals(valueIterable.next().value, 'value1');
+      assertEquals(valueIterable.next().value, 'value2');
+      assertEquals(valueIterable.next().done, true);
+    }
+  });
 }
 
 describe('mapsTest', function() {
-  makeTests({
-    constructor: proto.jspb.test.TestMapFields,
-    deserializeBinary: proto.jspb.test.TestMapFields.deserializeBinary
-  }, proto.jspb.test.MapValueMessage, "_Binary");
-  makeTests({
-    constructor: proto.jspb.test.TestMapFieldsNoBinary,
-    deserializeBinary: null
-  }, proto.jspb.test.MapValueMessageNoBinary, "_NoBinary");
+  makeTests(
+      {
+        constructor: proto.jspb.test.TestMapFields,
+        deserializeBinary: proto.jspb.test.TestMapFields.deserializeBinary
+      },
+      proto.jspb.test.MapValueMessage, '_Binary');
+  makeTests(
+      {
+        constructor: proto.jspb.test.TestMapFieldsNoBinary,
+        deserializeBinary: null
+      },
+      proto.jspb.test.MapValueMessageNoBinary, '_NoBinary');
 });

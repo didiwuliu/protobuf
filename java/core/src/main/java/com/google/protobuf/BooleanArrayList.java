@@ -30,8 +30,9 @@
 
 package com.google.protobuf;
 
-import com.google.protobuf.Internal.BooleanList;
+import static com.google.protobuf.Internal.checkNotNull;
 
+import com.google.protobuf.Internal.BooleanList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.RandomAccess;
@@ -41,11 +42,11 @@ import java.util.RandomAccess;
  *
  * @author dweis@google.com (Daniel Weis)
  */
-final class BooleanArrayList
-    extends AbstractProtobufList<Boolean>
-    implements BooleanList, RandomAccess {
+final class BooleanArrayList extends AbstractProtobufList<Boolean>
+    implements BooleanList, RandomAccess, PrimitiveNonBoxingCollection {
 
   private static final BooleanArrayList EMPTY_LIST = new BooleanArrayList();
+
   static {
     EMPTY_LIST.makeImmutable();
   }
@@ -54,9 +55,7 @@ final class BooleanArrayList
     return EMPTY_LIST;
   }
 
-  /**
-   * The backing store for the list.
-   */
+  /** The backing store for the list. */
   private boolean[] array;
 
   /**
@@ -65,20 +64,30 @@ final class BooleanArrayList
    */
   private int size;
 
-  /**
-   * Constructs a new mutable {@code BooleanArrayList} with default capacity.
-   */
+  /** Constructs a new mutable {@code BooleanArrayList} with default capacity. */
   BooleanArrayList() {
     this(new boolean[DEFAULT_CAPACITY], 0);
   }
 
   /**
-   * Constructs a new mutable {@code BooleanArrayList}
-   * containing the same elements as {@code other}.
+   * Constructs a new mutable {@code BooleanArrayList} containing the same elements as {@code
+   * other}.
    */
   private BooleanArrayList(boolean[] other, int size) {
     array = other;
     this.size = size;
+  }
+
+  @Override
+  protected void removeRange(int fromIndex, int toIndex) {
+    ensureIsMutable();
+    if (toIndex < fromIndex) {
+      throw new IndexOutOfBoundsException("toIndex < fromIndex");
+    }
+
+    System.arraycopy(array, toIndex, array, fromIndex, size - toIndex);
+    size -= (toIndex - fromIndex);
+    modCount++;
   }
 
   @Override
@@ -156,17 +165,13 @@ final class BooleanArrayList
     addBoolean(index, element);
   }
 
-  /**
-   * Like {@link #add(Boolean)} but more efficient in that it doesn't box the element.
-   */
+  /** Like {@link #add(Boolean)} but more efficient in that it doesn't box the element. */
   @Override
   public void addBoolean(boolean element) {
     addBoolean(size, element);
   }
 
-  /**
-   * Like {@link #add(int, Boolean)} but more efficient in that it doesn't box the element.
-   */
+  /** Like {@link #add(int, Boolean)} but more efficient in that it doesn't box the element. */
   private void addBoolean(int index, boolean element) {
     ensureIsMutable();
     if (index < 0 || index > size) {
@@ -198,9 +203,7 @@ final class BooleanArrayList
   public boolean addAll(Collection<? extends Boolean> collection) {
     ensureIsMutable();
 
-    if (collection == null) {
-      throw new NullPointerException();
-    }
+    checkNotNull(collection);
 
     // We specialize when adding another BooleanArrayList to avoid boxing elements.
     if (!(collection instanceof BooleanArrayList)) {
@@ -248,7 +251,9 @@ final class BooleanArrayList
     ensureIsMutable();
     ensureIndexInRange(index);
     boolean value = array[index];
-    System.arraycopy(array, index + 1, array, index, size - index);
+    if (index < size - 1) {
+      System.arraycopy(array, index + 1, array, index, size - index);
+    }
     size--;
     modCount++;
     return value;

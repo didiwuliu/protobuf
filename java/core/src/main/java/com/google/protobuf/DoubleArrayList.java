@@ -30,8 +30,9 @@
 
 package com.google.protobuf;
 
-import com.google.protobuf.Internal.DoubleList;
+import static com.google.protobuf.Internal.checkNotNull;
 
+import com.google.protobuf.Internal.DoubleList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.RandomAccess;
@@ -41,11 +42,11 @@ import java.util.RandomAccess;
  *
  * @author dweis@google.com (Daniel Weis)
  */
-final class DoubleArrayList
-    extends AbstractProtobufList<Double>
-    implements DoubleList, RandomAccess {
+final class DoubleArrayList extends AbstractProtobufList<Double>
+    implements DoubleList, RandomAccess, PrimitiveNonBoxingCollection {
 
   private static final DoubleArrayList EMPTY_LIST = new DoubleArrayList();
+
   static {
     EMPTY_LIST.makeImmutable();
   }
@@ -54,9 +55,7 @@ final class DoubleArrayList
     return EMPTY_LIST;
   }
 
-  /**
-   * The backing store for the list.
-   */
+  /** The backing store for the list. */
   private double[] array;
 
   /**
@@ -65,20 +64,29 @@ final class DoubleArrayList
    */
   private int size;
 
-  /**
-   * Constructs a new mutable {@code DoubleArrayList} with default capacity.
-   */
+  /** Constructs a new mutable {@code DoubleArrayList} with default capacity. */
   DoubleArrayList() {
     this(new double[DEFAULT_CAPACITY], 0);
   }
 
   /**
-   * Constructs a new mutable {@code DoubleArrayList}
-   * containing the same elements as {@code other}.
+   * Constructs a new mutable {@code DoubleArrayList} containing the same elements as {@code other}.
    */
   private DoubleArrayList(double[] other, int size) {
     array = other;
     this.size = size;
+  }
+
+  @Override
+  protected void removeRange(int fromIndex, int toIndex) {
+    ensureIsMutable();
+    if (toIndex < fromIndex) {
+      throw new IndexOutOfBoundsException("toIndex < fromIndex");
+    }
+
+    System.arraycopy(array, toIndex, array, fromIndex, size - toIndex);
+    size -= (toIndex - fromIndex);
+    modCount++;
   }
 
   @Override
@@ -157,17 +165,13 @@ final class DoubleArrayList
     addDouble(index, element);
   }
 
-  /**
-   * Like {@link #add(Double)} but more efficient in that it doesn't box the element.
-   */
+  /** Like {@link #add(Double)} but more efficient in that it doesn't box the element. */
   @Override
   public void addDouble(double element) {
     addDouble(size, element);
   }
 
-  /**
-   * Like {@link #add(int, Double)} but more efficient in that it doesn't box the element.
-   */
+  /** Like {@link #add(int, Double)} but more efficient in that it doesn't box the element. */
   private void addDouble(int index, double element) {
     ensureIsMutable();
     if (index < 0 || index > size) {
@@ -199,9 +203,7 @@ final class DoubleArrayList
   public boolean addAll(Collection<? extends Double> collection) {
     ensureIsMutable();
 
-    if (collection == null) {
-      throw new NullPointerException();
-    }
+    checkNotNull(collection);
 
     // We specialize when adding another DoubleArrayList to avoid boxing elements.
     if (!(collection instanceof DoubleArrayList)) {
@@ -249,7 +251,9 @@ final class DoubleArrayList
     ensureIsMutable();
     ensureIndexInRange(index);
     double value = array[index];
-    System.arraycopy(array, index + 1, array, index, size - index);
+    if (index < size - 1) {
+      System.arraycopy(array, index + 1, array, index, size - index);
+    }
     size--;
     modCount++;
     return value;
